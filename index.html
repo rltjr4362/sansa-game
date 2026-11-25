@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#d8dfd1">
+<title>산사의 하루 · 파스텔 Ⅱ</title>
+<style>
+*{box-sizing:border-box} body{margin:0;color:#2b382f;font:14px "Malgun Gothic",system-ui,sans-serif;background:#d8dfd1}
+main{position:relative;height:100vh;height:100dvh;isolation:isolate;overflow:hidden}
+#land{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
+header,footer{position:absolute;left:clamp(16px,3.5vw,64px);right:clamp(16px,3.5vw,64px);display:flex;align-items:center;justify-content:space-between;gap:12px;pointer-events:none}
+header{top:max(22px,env(safe-area-inset-top));align-items:flex-start} footer{bottom:max(22px,env(safe-area-inset-bottom));align-items:flex-end}
+h1{margin:0;font:650 clamp(23px,2.6vw,38px) Batang,"Malgun Gothic",serif;letter-spacing:-.09em}
+.brand,.readout,.dock,#settings,#chant{background:#fff9e9ed;border:1px solid #fdf5dfc9;border-radius:6px;box-shadow:0 2px 0 #3445342e,0 5px 22px #35443212}
+.brand{display:flex;gap:12px;align-items:center;padding:10px 17px 11px 12px}.seal{background:#415747;color:#f5ecd5;display:grid;place-items:center;border:1px solid #53694f;box-shadow:inset 0 0 0 2px #415747,inset 0 0 0 3px #a8b398;border-radius:4px;width:36px;height:38px;font:22px Batang,serif}
+.readout{display:flex;align-items:center;gap:10px;padding:10px 13px;font-size:12px;font-weight:600}#clock{border-left:1px solid #c8cbb9;padding-left:10px;font:600 14px Consolas,monospace}
+.status{color:#fff7df;background:#263b33e8;border:1px solid #b2bca366;padding:12px 17px;border-radius:5px;box-shadow:0 3px 14px #172b3029;display:grid;gap:4px;max-width:min(55vw,350px)}
+#place{font-size:11px;color:#d3d8b9;letter-spacing:.08em}#activity{font:600 17px Batang,"Malgun Gothic",serif}
+.dock{display:flex;gap:3px;align-items:center;padding:4px;pointer-events:auto;position:relative}
+button{background:transparent;border:0;color:#324739;cursor:pointer;font-family:inherit;font-size:13px;min-width:40px;min-height:39px;border-radius:3px;padding:0 10px}
+button:hover,button[aria-pressed=true]{background:#d8dfcd}button:focus-visible{outline:2px solid #785734;outline-offset:2px}
+.divider{height:18px;width:1px;background:#c8cbb9}#bearing{min-width:28px;text-align:center;font-size:12px;font-weight:600}
+#settings{position:absolute;bottom:calc(100% + 9px);right:0;min-width:180px;padding:6px;background:#fff9ea}#settings button{display:flex;justify-content:space-between;width:100%;align-items:center}#settings b{font-size:12px;color:#5a6b54}
+#chant{position:absolute;left:50%;bottom:14%;transform:translateX(-50%);padding:7px 17px;font:16px Batang,serif;letter-spacing:.14em;pointer-events:none}
+header,footer{transition:opacity 1.5s}main.quiet header,main.quiet footer{opacity:.28}main.quiet footer:hover,main.quiet footer:focus-within{opacity:1}
+@media(max-width:560px){header{top:16px}.brand{padding:8px;gap:6px}.seal{width:29px;height:31px;font-size:18px}.readout{padding:8px;gap:5px}footer{flex-wrap:wrap;align-items:flex-end;bottom:16px}.status{max-width:none;padding:8px 12px}.dock{margin-left:auto}.dock button{padding:0 5px;min-width:35px}.dock{gap:1px}#activity{font-size:15px}}
+#settings [hidden]{display:none}
+.landTools{display:flex;gap:7px;align-items:flex-start}.regionBox{position:relative;pointer-events:auto}
+#region{border:1px solid #e0deca;border-radius:5px;background:#fff9e9ed;color:#324739;font:600 12px "Malgun Gothic",sans-serif;padding:8px 4px;max-width:110px}
+#regionNote{position:absolute;top:calc(100% + 5px);right:0;width:max-content;max-width:78vw;padding:5px 8px;border-radius:4px;background:#fff9e9ec;color:#41503e;font-size:11px}
+@media(max-width:400px){.landTools{gap:3px}#region{max-width:87px;padding:7px 1px}}
+#land{transform-origin:0 0;touch-action:none}
+.resident{position:absolute;transform:translate(-50%,-50%);min-width:32px;min-height:32px;padding:0;border-radius:45%;border:1px solid transparent;touch-action:none}
+.resident:hover,.resident:focus-visible{background:#fff5cf19;border-color:#fff1bcbb}
+#meet{position:absolute;left:50%;bottom:max(112px,19%);transform:translateX(-50%);padding:8px;background:#fff9ebf5;border:1px solid #e1dcc4;border-radius:6px;box-shadow:0 4px 22px #29382c33;white-space:nowrap}
+#meet strong{display:block;padding:5px 9px 6px;font:600 15px Batang,serif}#meet button{min-height:34px}
+#chant{max-width:90vw;width:max-content;text-align:center;line-height:1.5;letter-spacing:.025em}
+#chant small{display:block;font:11px "Malgun Gothic",sans-serif;color:#61705a}
+#zoomLevel{font:12px Consolas,monospace;min-width:31px;text-align:center}
+@media(max-width:560px){footer{gap:6px}.dock{max-width:100%}.dock button{min-width:29px}.dock .divider{margin:0 1px}#chant{bottom:23%}#meet{bottom:24%}}
+@media(prefers-reduced-motion:reduce){header,footer{transition:none}}
+#chant{bottom:auto;transform:translateY(-100%);border-radius:12px 12px 12px 3px;max-width:min(75vw,300px);text-align:left;z-index:1}
+#chant:after{content:"";position:absolute;bottom:-5px;left:var(--tip,12px);width:9px;height:9px;background:#fff9e9;transform:rotate(45deg)}
+#settings{max-height:65vh;overflow:auto}
+.soundLevel{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 10px 8px;color:#526453;font-size:11px}.soundLevel input{width:85px;accent-color:#526c57}
+#land{image-rendering:pixelated}
+h1 small{display:block;font:600 10px "Malgun Gothic",sans-serif;letter-spacing:.14em;color:#766679}
+.brand,.dock,.readout,#chant,#settings,#meet,#region,#regionNote{background-color:#fff6efef;border-color:#e7d7d9;color:#504554}
+.seal{background:#a6c1b5;color:#384d48;border-color:#95b2a7;box-shadow:inset 0 0 0 2px #a6c1b5,inset 0 0 0 3px #e1ebe2}
+.status{background:#e4dce8ef;color:#48414e;border-color:#f4eaf2}#place{color:#68576d}
+button:hover,button[aria-pressed=true]{background:#e4dbe8}
+[hidden],main[data-mode="play"] [data-observe]{display:none!important}
+#app:focus{outline:none}
+#mode,#modelControls button,#interaction{
+  background:#fff6efef;border:1px solid #e7d7d9;color:#504554;border-radius:5px;
+  box-shadow:0 2px 0 #3445342e;pointer-events:auto
+}
+#mode{font-weight:600;white-space:nowrap;min-height:36px}
+#modelControls{position:absolute;top:max(75px,calc(env(safe-area-inset-top) + 66px));right:clamp(16px,3.5vw,64px)}
+#modelControls button{padding:0 12px;font-weight:650}
+#interaction{
+  position:absolute;transform:translate(-50%,-100%);padding:4px 8px;
+  font-size:12px;font-weight:700;white-space:nowrap;pointer-events:none
+}
+#hud{color:#4d6155;font-size:12px;overflow-wrap:anywhere}
+#dialogue{
+  position:fixed;inset:auto 0 max(14px,env(safe-area-inset-bottom));width:min(640px,calc(100% - 24px));
+  max-height:calc(100dvh - 28px);padding:0;border:1px solid #c6b7c9;border-radius:13px;
+  color:#443a49;background:#fbf3ed;box-shadow:0 12px 48px #3b334b52
+}
+#dialogue::backdrop{background:#28243630}
+.dialogue-heading{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:4px 12px 4px 20px;background:#e8ddea;border-bottom:1px solid #d9cbdc
+}
+.dialogue-heading h2{margin:0;font:700 19px Batang,"Malgun Gothic",serif}
+.dialogue-content{padding:14px 20px 16px;display:grid;gap:10px}
+.dialogue-reply{min-height:2.8em;margin:0;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+#dialogueThinking{color:#66516d;font-weight:700;letter-spacing:.14em}
+.dialogue-buttons{display:flex;flex-wrap:wrap;gap:6px}
+.dialogue-buttons button{min-height:35px;border:1px solid #d6c9da;background:#f0e8f1;color:#473848;overflow-wrap:anywhere}
+.dialogue-buttons button:hover{background:#e5d9e9}
+.dialogue-buttons kbd{margin-right:.5em;color:#65516b}
+#dialogueForm{display:flex;gap:8px;align-items:stretch}
+#dialogueInput{
+  flex:1;min-width:0;padding:8px 10px;border:1px solid #b8aaba;border-radius:5px;
+  color:#443a49;background:#fffaf6;font:inherit;font-size:16px
+}
+#dialogueInput:focus-visible{outline:2px solid #576f62;outline-offset:1px}
+#dialogueForm button{background:#d7e3d8;color:#304437;font-weight:700;white-space:nowrap}
+#dialogueForm button:hover{background:#c9dbc9}
+#dialogueStatus{margin:0;color:#5b5061;font-size:12px;overflow-wrap:anywhere}
+@media(max-width:560px){
+  .landTools{flex-wrap:wrap;justify-content:flex-end}
+  #dialogue{width:calc(100% - 16px)}
+  .dialogue-content{padding:12px}
+  .dialogue-heading{padding-left:12px}
+}
+</style>
+<main id="app" tabindex="-1" data-mode="play">
+<canvas id="land" role="img" aria-label="방문객과 스님이 걷는 산사"></canvas>
+<button class="resident" data-observe id="catTarget" aria-label="고양이 곁에 앉기" aria-controls="meet"></button><button class="resident" data-observe id="whiteTarget" aria-label="백구와 놀기" aria-controls="meet"></button>
+<button class="resident" data-observe id="dogTarget" aria-label="강아지와 교감" title="강아지와 교감" aria-controls="meet" aria-expanded="false"></button>
+<button class="resident" data-observe id="monkTarget" aria-label="스님과 대화" title="스님과 대화" aria-controls="meet" aria-expanded="false"></button>
+<header><div class="brand"><span class="seal" aria-hidden="true">山</span><h1>산사의 하루 <small>파스텔 Ⅱ</small></h1></div><div class="landTools"><button id="mode" type="button" aria-keyshortcuts="Tab">관찰 모드 · Tab</button><div class="regionBox" data-observe><select id="region" aria-label="감상할 구역"><option value="all">산사 전경</option><option value="monk">스님 따라가기</option><option value="dog">강아지 따라가기</option><option value="white">백구 따라가기</option><option value="cat">고양이 따라가기</option><option value="farm">동쪽 들밭</option><option value="mainHall">대웅전 내부</option><option value="mercy">관음전 내부</option><option value="mountain">산신각 내부</option><option value="lodge">산객당 내부</option><option value="zen">선방 내부</option><option value="kitchen">공양간 내부</option></select><output id="regionNote" hidden></output></div><div class="readout"><span id="weather">맑음</span><time id="clock">08:10</time></div></div></header>
+<div id="interaction" hidden></div>
+<div id="chant" hidden><small id="source"></small><span id="words"></span></div>
+<section id="meet" aria-labelledby="meetTitle" hidden><strong id="meetTitle">스님과 대화</strong><span id="monkActions"><button id="greet">합장 인사</button><button id="recite">경전 독송 청하기</button></span><span id="dogActions" hidden><button id="sniff">손 내밀기</button><button id="pet">쓰다듬기</button></span><button id="rollCone" hidden>솔방울 굴려 주기</button><button id="sitCat" hidden>곁에 앉기</button><button id="dismiss" aria-label="교감 메뉴 닫기">닫기</button></section>
+<footer><div class="status"><span id="place"></span><span id="activity"></span><span id="hud" role="status" hidden></span></div>
+<div class="dock" role="group" aria-label="감상 설정">
+<button id="play" aria-label="일시정지" title="재생 또는 일시정지">Ⅱ</button><span class="divider" data-observe></span>
+<button data-observe id="prev" aria-label="이전 시점" title="이전 시점">◀</button><span data-observe id="bearing">남동</span><button data-observe id="next" aria-label="다음 시점" title="다음 시점">▶</button><span class="divider" data-observe></span>
+<button data-observe id="zoomOut" aria-label="축소">−</button><span data-observe id="zoomLevel">100%</span><button data-observe id="zoomIn" aria-label="확대">＋</button><span class="divider" data-observe></span>
+<button id="menu" aria-expanded="false" aria-controls="settings">설정</button>
+<div id="settings" hidden><button data-observe id="talk">스님과 대화 <b>↗</b></button><button data-observe id="visitDog">강아지와 교감 <b>↗</b></button><button data-observe id="visitWhite">백구와 놀기</button><button data-observe id="visitCat">고양이 곁에 앉기</button><button id="music" aria-pressed="false">배경음악 <b>꺼짐</b></button><label class="soundLevel">음악 음량 <input id="musicLevel" type="range" min="0" max="100" value="45"></label><button id="ambient" aria-pressed="false">환경음 <b>꺼짐</b></button><label class="soundLevel">환경 음량 <input id="ambientLevel" type="range" min="0" max="100" value="40"></label><button data-observe id="auto">자동 시점 <b></b></button><button id="speed">재생 속도 <b></b></button><button id="subs">독송 자막 <b></b></button><button id="voice">독송 음성 <b>꺼짐</b></button><button id="full">전체 화면 <b>⛶</b></button></div>
+</div></footer>
+<div id="modelControls"></div>
+<dialog id="dialogue" aria-labelledby="dialogueTitle">
+  <div class="dialogue-heading">
+    <h2 id="dialogueTitle"></h2>
+    <button id="dialogueClose" type="button" aria-label="대화 닫기">닫기</button>
+  </div>
+  <div class="dialogue-content">
+    <p class="dialogue-reply"><span id="dialogueText"></span><span id="dialogueThinking" aria-label="생각 중" hidden> …</span></p>
+    <div id="dialogueOptions" class="dialogue-buttons" role="group" aria-label="추천 대사" hidden></div>
+    <div id="dialogueChoices" class="dialogue-buttons" role="group" aria-label="응답 선택" hidden></div>
+    <form id="dialogueForm">
+      <input id="dialogueInput" aria-label="스님에게 할 말" type="text" autocomplete="off" placeholder="스님에게 말을 건네 보세요">
+      <button id="dialogueSend" type="button">보내기</button>
+    </form>
+    <p id="dialogueStatus" role="status" hidden></p>
+  </div>
+</dialog>
+</main>
+<script type="module">
+  import { startPlay } from './src/play.js';
+  import { createGame } from './src/game.js';
+  const play = startPlay(document.getElementById('land'));
+  createGame(play);
+</script>
+</html>
