@@ -11,21 +11,31 @@ export function createRouter({ primary, fallback, timeoutMs = 8000 }) {
     return { raw, reply, source: 'mock' };
   }
 
-  async function tryPrimary({ messages, signal, onText }) {
-    const ac = new AbortController();
-    const onAbort = () => ac.abort();
-    signal?.addEventListener('abort', onAbort);
-    const timer = setTimeout(() => ac.abort(), timeoutMs);
-    try {
-      const raw = await primary.chat({ messages, signal: ac.signal, onText });
-      const reply = parseReply(raw);
-      return reply ? { raw, reply, source: 'llm' } : null;
-    } catch {
-      return null;
-    } finally {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', onAbort);
-    }
+  // 타임아웃·외부 abort는 primary가 abort를 무시해도 대기를 즉시 끝낸다. 그 뒤의 청크·결과는 버린다.
+  // 타임아웃·실패·파싱 실패 → null(fallback으로), 외부 abort → AbortError.
+  function tryPrimary({ messages, signal, onText }) {
+    return new Promise((resolve, reject) => {
+      const ac = new AbortController();
+      let settled = false;
+      const finish = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        fn(value);
+      };
+      const onAbort = () => { ac.abort(); finish(reject, abortError()); };
+      const timer = setTimeout(() => { ac.abort(); finish(resolve, null); }, timeoutMs);
+      signal?.addEventListener('abort', onAbort);
+      Promise.resolve()
+        .then(() => primary.chat({
+          messages, signal: ac.signal, onText: t => { if (!settled) onText?.(t); }
+        }))
+        .then(raw => {
+          const reply = parseReply(raw);
+          finish(resolve, reply ? { raw, reply, source: 'llm' } : null);
+        }, () => finish(resolve, null));
+    });
   }
 
   return {

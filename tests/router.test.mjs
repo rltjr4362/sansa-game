@@ -71,3 +71,52 @@ test('이미 abort된 signal → reject', async () => {
   const r = createRouter({ primary: primary(async () => good), fallback: createMockLLM() });
   await assert.rejects(r.chat({ messages: msgs, signal: ac.signal }), { name: 'AbortError' });
 });
+
+// abort를 무시하고 직접 결과를 내보내는 primary. 대기 종료·늦은 결과 차단 검증용.
+function stubborn() {
+  const h = {};
+  h.engine = primary(({ onText }) => new Promise(resolve => { h.onText = onText; h.resolve = resolve; }));
+  return h;
+}
+
+test('타임아웃: primary가 abort를 무시해도 즉시 mock, 늦은 청크·결과는 버린다', async () => {
+  const h = stubborn();
+  const seen = [];
+  const r = createRouter({ primary: h.engine, fallback: createMockLLM(), timeoutMs: 5 });
+  const t0 = Date.now();
+  const out = await Promise.race([
+    r.chat({ messages: msgs, onText: t => seen.push(t) }),
+    new Promise(res => setTimeout(() => res('hung'), 200))
+  ]);
+  assert.notEqual(out, 'hung');
+  assert.equal(out.source, 'mock');
+  assert.ok(Date.now() - t0 < 150);
+  const n = seen.length;
+  h.onText('late chunk');
+  h.resolve(good);
+  await new Promise(res => setImmediate(res));
+  assert.equal(seen.length, n);
+  assert.ok(!seen.includes('late chunk'));
+});
+
+test('외부 abort: primary가 abort를 무시해도 즉시 AbortError, fallback 미호출, 늦은 청크 차단', async () => {
+  const h = stubborn();
+  let fbCalls = 0;
+  const fallback = { ready: true, chat: async () => { fbCalls++; return good; } };
+  const seen = [];
+  const ac = new AbortController();
+  const r = createRouter({ primary: h.engine, fallback, timeoutMs: 10000 });
+  const pr = r.chat({ messages: msgs, signal: ac.signal, onText: t => seen.push(t) });
+  await new Promise(res => setImmediate(res));
+  ac.abort();
+  const out = await Promise.race([
+    pr.then(() => 'resolved', e => e),
+    new Promise(res => setTimeout(() => res('hung'), 200))
+  ]);
+  assert.equal(out?.name, 'AbortError');
+  assert.equal(fbCalls, 0);
+  h.onText('late');
+  h.resolve(good);
+  await new Promise(res => setImmediate(res));
+  assert.deepEqual(seen, []);
+});
