@@ -108,3 +108,55 @@ export function affinityBand(affinity) {
  * @typedef {{requestId: number, npc: 'monk', action: 'go_to', place: keyof typeof PLACES}
  *   | {requestId: number, npc: 'monk', action: 'none'|'follow'|'stop_follow'|'offer_errand', place: null}} ActionRequest
  */
+
+// ── Plan 2(플레이) ↔ Plan 3(게임 두뇌) 연결 ──────────────────────────────
+// index.html: `const play = startPlay(canvas); createGame(play);`
+// Plan 2는 src/play.js의 startPlay를, Plan 3은 src/game.js의 createGame을 만든다.
+
+/**
+ * 스님을 바깥에서 다루는 손잡이. Plan 2가 구현하고 Plan 3(actions.js)이 호출한다.
+ * 모든 메서드는 예외를 던지지 않는다.
+ * @typedef {{
+ *   possessed(): boolean,                       // 플레이어가 스님에 빙의 중
+ *   busy(): boolean,                            // 원본 공동 활동(s.encounter, s.meeting) 진행 중
+ *   tile(): [number, number],                   // 스님의 현재 정수 타일
+ *   snapshotBase(): {clock: number, weather: string, place: string|null, activity: string, following: boolean},
+ *   follow(seconds: number): boolean,           // 방문객 뒤 1~2타일을 따라감. 빙의 중이면 false
+ *   stopFollow(): void,                         // 따라가기 종료, 일과 재개(현재 타일에서 재탐색)
+ *   goTo(place: keyof typeof PLACES): boolean,  // 장소 접근 타일로 이동. 경로 없거나 빙의 중이면 false. 도착하면 일과 재개
+ *   say(text: string, seconds?: number): void   // 스님 머리 위 말풍선 (대본 인사·짧은 대사)
+ * }} MonkHandle
+ */
+
+/**
+ * 대화창 화면. Plan 2(Codex)가 마크업·CSS·동작을 만들고 Plan 3이 내용을 채운다.
+ * 열려 있는 동안 플레이어 이동 키는 막힌다. Esc는 close()와 같고 onClose를 부른다.
+ * @typedef {{
+ *   open(title: string): void,
+ *   isOpen(): boolean,
+ *   setNpcText(text: string): void,             // 스트리밍 중 매번 전체 문자열로 덮어쓴다
+ *   setThinking(on: boolean): void,             // "…" 표시
+ *   setOptions(options: string[]): void,        // 최대 3개, 1/2/3 키로 고름. 빈 배열이면 숨김
+ *   setChoices(choices: Array<{label: string, id: string}>): void, // [수락]/[거절] 같은 버튼. 빈 배열이면 숨김
+ *   setStatus(text: string): void,              // 창 아래 작은 안내 (예: "대본 스님이 답해요")
+ *   onSubmit(cb: (text: string) => void): void, // 자유 입력 Enter 또는 1/2/3
+ *   onChoice(cb: (id: string) => void): void,
+ *   onClose(cb: () => void): void,
+ *   close(): void
+ * }} DialogueView
+ */
+
+/**
+ * startPlay()의 반환값.
+ * @typedef {{
+ *   monk: MonkHandle,
+ *   dialogue: DialogueView,
+ *   playerTile(): [number, number],             // 지금 조종 중인 캐릭터의 타일
+ *   possessing(): 'visitor'|'monk',
+ *   onInteract(cb: (target: 'monk'|'well') => void): void, // E 키: 스님(대화 가능 거리·경로) 또는 우물 근처
+ *   onPossessChange(cb: (who: 'visitor'|'monk') => void): void,
+ *   onTick(cb: (dt: number) => void): void,     // 시뮬레이션 한 프레임마다 (일시정지 중엔 안 부름)
+ *   setHud(text: string): void,                 // 화면 한쪽 작은 상태 줄 (예: "부탁: 물 길어 오기")
+ *   modelButton(onClick: () => void): {setText(text: string): void, hide(): void} // "AI 스님 깨우기" 버튼
+ * }} Play
+ */
