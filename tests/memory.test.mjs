@@ -195,10 +195,12 @@ test('동물 키(dog·white·cat)도 NPC별로 따로 기록된다', () => {
   assert.equal(mem.get('dog').meetings, 2);
   assert.equal(mem.get('white').meetings, 1);
   assert.equal(mem.get('monk').meetings, 0);
-  // 하루 상한 3: 4번째 만남은 호감도를 올리지 않는다
-  mem.recordMeeting('dog'); mem.recordMeeting('dog');
-  assert.equal(mem.get('dog').meetings, 4);
-  assert.equal(mem.get('dog').affinity, 3);
+  // 동물 하루 상한 5: 6번째 만남은 호감도를 올리지 않는다 (스님은 3)
+  for (let i = 0; i < 4; i++) mem.recordMeeting('dog');
+  assert.equal(mem.get('dog').meetings, 6);
+  assert.equal(mem.get('dog').affinity, 5);
+  for (let i = 0; i < 4; i++) mem.recordMeeting('monk');
+  assert.equal(mem.get('monk').affinity, 3);
 });
 
 test('today: 오늘 만난 횟수, 날이 바뀌면 0부터', () => {

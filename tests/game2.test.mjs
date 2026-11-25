@@ -95,10 +95,10 @@ test('동물 호감도가 close여도 LLM이 안 깨어 있으면 대본', () =>
   assert.match(d.npcText, /\(.+\)/);
 });
 
-test('동물 호감도가 close 미만이면 LLM이 깨어 있어도 대본', () => {
+test('동물 호감도가 낯익음 미만이면 LLM이 깨어 있어도 대본', () => {
   const router = llmRouter();
   const { play, d, memory } = setup({ router });
-  memory.recordErrand('dog', 'done'); // 5: familiar
+  memory.recordMeeting('dog'); // 1: new (interact가 +1 해도 2)
   play.fire.interact('dog');
   d.submit('안녕');
   assert.equal(router.calls.length, 0);

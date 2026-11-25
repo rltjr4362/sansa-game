@@ -77,8 +77,8 @@ export function createGame(play, deps = {}) {
   const holdNpc = (npc, seconds) => (npc === 'monk' ? monk : animalOf(npc))?.hold?.(seconds);
   const hud = text => { hudClearAt = null; play.setHud(text); };
 
-  // 동물은 호감도가 close 이상이고 LLM이 깨어 있을 때만 LLM으로 답한다. 그 밖에는 대본.
-  const animalUsesLLM = npc => router.active() === 'llm' && memory.band(npc) === 'close';
+  // 동물은 호감도가 '낯익음' 이상이고 LLM이 깨어 있을 때만 LLM으로 답한다. 그 밖에는 대본.
+  const animalUsesLLM = npc => router.active() === 'llm' && memory.band(npc) !== 'new';
   const options = () => {
     if (convo && isAnimal(convo.partner)) return animalPartnerOptions(convo.partner);
     return templateOptions({ following: following(), errandState: errands.state(), errandKind: errands.kind() });

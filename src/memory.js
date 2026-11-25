@@ -2,6 +2,9 @@ import { affinityBand } from './contracts.js';
 
 const KEY = 'sansa.v1';
 const DAILY_MEETING_CAP = 3;
+// 동물은 짧은 한 판 안에서도 말을 트도록 하루 상한을 높인다.
+const ANIMAL_DAILY_CAP = 5;
+const dailyCap = npc => npc === 'monk' ? DAILY_MEETING_CAP : ANIMAL_DAILY_CAP;
 const ERRAND_KINDS = ['offered', 'accepted', 'done'];
 const MAX_TURNS = 2;
 const MAX_COUNT = 9999;
@@ -44,7 +47,7 @@ function sanitize(raw) {
   for (const k of ERRAND_KINDS) n.errands[k] = int(raw.errands?.[k]);
   if (Array.isArray(raw.lastLines)) n.lastLines = completeTurns(raw.lastLines);
   if (typeof raw.day === 'string') n.day = raw.day;
-  n.dayGain = Math.min(int(raw.dayGain), DAILY_MEETING_CAP);
+  n.dayGain = Math.min(int(raw.dayGain), ANIMAL_DAILY_CAP);
   n.dayMeetings = int(raw.dayMeetings);
   return n;
 }
@@ -103,7 +106,7 @@ export function createMemory(storage, now = () => Date.now()) {
         if (r.day !== today) { r.day = today; r.dayGain = 0; r.dayMeetings = 0; }
         r.dayMeetings = cap(r.dayMeetings + 1);
         r.meetings = cap(r.meetings + 1);
-        if (r.dayGain < DAILY_MEETING_CAP) { r.dayGain++; r.affinity = cap(r.affinity + 1); }
+        if (r.dayGain < dailyCap(npc)) { r.dayGain++; r.affinity = cap(r.affinity + 1); }
       });
     },
     recordErrand(npc, kind) {
