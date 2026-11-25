@@ -56,19 +56,51 @@ button:hover,button[aria-pressed=true]{background:#e4dbe8}
   box-shadow:0 2px 0 #3445342e;pointer-events:auto
 }
 #mode{font-weight:600;white-space:nowrap;min-height:36px}
-#modelControls{position:absolute;top:max(75px,calc(env(safe-area-inset-top) + 66px));right:clamp(16px,3.5vw,64px)}
+.topTools{display:grid;justify-items:end;gap:7px;min-width:0}
+#modelControls{display:grid;justify-items:end;gap:5px}
 #modelControls button{padding:0 12px;font-weight:650}
+.model-picker{position:relative;display:grid;justify-items:end}
+.model-choices{
+  position:absolute;z-index:2;right:0;top:calc(100% + 6px);width:max-content;
+  display:grid;gap:4px;padding:5px;border:1px solid #e7d7d9;border-radius:7px;
+  background:#fbf3ed;box-shadow:0 4px 16px #3b334b30
+}
+.model-choices button{text-align:left;min-height:34px}
+#seal{padding:0;min-width:0;min-height:0;pointer-events:auto;flex-shrink:0}
+#seal:hover{background:#b8cdc0}
 #interaction{
   position:absolute;transform:translate(-50%,-100%);padding:4px 8px;
   font-size:12px;font-weight:700;white-space:nowrap;pointer-events:none
 }
+#monkDirection{
+  position:absolute;transform:translate(-50%,-50%);display:flex;align-items:center;gap:5px;
+  padding:3px 7px;border:1px solid #e7d7d9;border-radius:5px;
+  background:#fff6efef;color:#504554;font-size:11px;font-weight:700;pointer-events:none
+}
+#monkArrow{font-size:10px;color:#48665a}
+.animalSpeech{
+  position:absolute;z-index:1;transform:translateY(-100%);width:max-content;max-width:min(65vw,240px);
+  padding:5px 10px 6px;border:1px solid #e7d7d9;border-radius:9px 9px 9px 2px;
+  background:#fff6efef;color:#504554;line-height:1.45;overflow-wrap:anywhere;pointer-events:none
+}
+.animalSpeech small{display:block;color:#526c62;font-size:11px}
+.animalSpeech::after{
+  content:"";position:absolute;bottom:-4px;left:var(--tip,12px);
+  width:7px;height:7px;background:#fff6ef;transform:rotate(45deg)
+}
 #hud{color:#4d6155;font-size:12px;overflow-wrap:anywhere}
-#dialogue{
+#dialogue,#journal{
   position:fixed;inset:auto 0 max(14px,env(safe-area-inset-bottom));width:min(640px,calc(100% - 24px));
   max-height:calc(100dvh - 28px);padding:0;border:1px solid #c6b7c9;border-radius:13px;
   color:#443a49;background:#fbf3ed;box-shadow:0 12px 48px #3b334b52
 }
-#dialogue::backdrop{background:#28243630}
+#dialogue::backdrop,#journal::backdrop{background:#28243630}
+#journal{inset:0;margin:auto;width:min(480px,calc(100% - 24px))}
+#journal .dialogue-heading{position:sticky;top:0}
+#journalEntries{display:grid;gap:9px}
+#journalEntries section{background:#fffaf6;border:1px solid #e7d7d9;border-radius:7px;padding:9px 12px}
+#journalEntries h3{margin:0 0 5px;font:700 15px Batang,"Malgun Gothic",serif}
+#journalEntries p,#journalEmpty{margin:0;line-height:1.6;overflow-wrap:anywhere}
 .dialogue-heading{
   display:flex;align-items:center;justify-content:space-between;gap:8px;
   padding:4px 12px 4px 20px;background:#e8ddea;border-bottom:1px solid #d9cbdc
@@ -98,12 +130,13 @@ button:hover,button[aria-pressed=true]{background:#e4dbe8}
 }
 </style>
 <main id="app" tabindex="-1" data-mode="play">
-<canvas id="land" role="img" aria-label="방문객과 스님이 걷는 산사"></canvas>
+<canvas id="land" role="img" aria-label="방문객과 스님, 동물들이 지내는 산사"></canvas>
 <button class="resident" data-observe id="catTarget" aria-label="고양이 곁에 앉기" aria-controls="meet"></button><button class="resident" data-observe id="whiteTarget" aria-label="백구와 놀기" aria-controls="meet"></button>
 <button class="resident" data-observe id="dogTarget" aria-label="강아지와 교감" title="강아지와 교감" aria-controls="meet" aria-expanded="false"></button>
 <button class="resident" data-observe id="monkTarget" aria-label="스님과 대화" title="스님과 대화" aria-controls="meet" aria-expanded="false"></button>
-<header><div class="brand"><span class="seal" aria-hidden="true">山</span><h1>산사의 하루 <small>파스텔 Ⅱ</small></h1></div><div class="landTools"><button id="mode" type="button" aria-keyshortcuts="Tab">관찰 모드 · Tab</button><div class="regionBox" data-observe><select id="region" aria-label="감상할 구역"><option value="all">산사 전경</option><option value="monk">스님 따라가기</option><option value="dog">강아지 따라가기</option><option value="white">백구 따라가기</option><option value="cat">고양이 따라가기</option><option value="farm">동쪽 들밭</option><option value="mainHall">대웅전 내부</option><option value="mercy">관음전 내부</option><option value="mountain">산신각 내부</option><option value="lodge">산객당 내부</option><option value="zen">선방 내부</option><option value="kitchen">공양간 내부</option></select><output id="regionNote" hidden></output></div><div class="readout"><span id="weather">맑음</span><time id="clock">08:10</time></div></div></header>
+<header><div class="brand"><h1>산사의 하루 <small>파스텔 Ⅱ</small></h1></div><div class="topTools"><div class="landTools"><button id="mode" type="button" aria-keyshortcuts="Tab">관찰 모드 · Tab</button><div class="regionBox" data-observe><select id="region" aria-label="감상할 구역"><option value="all">산사 전경</option><option value="monk">스님 따라가기</option><option value="dog">강아지 따라가기</option><option value="white">백구 따라가기</option><option value="cat">고양이 따라가기</option><option value="farm">동쪽 들밭</option><option value="mainHall">대웅전 내부</option><option value="mercy">관음전 내부</option><option value="mountain">산신각 내부</option><option value="lodge">산객당 내부</option><option value="zen">선방 내부</option><option value="kitchen">공양간 내부</option></select><output id="regionNote" hidden></output></div><div class="readout"><span id="weather">맑음</span><time id="clock">08:10</time></div><button class="seal" id="seal" type="button" aria-label="산사 도장">山</button></div><div id="modelControls"></div></div></header>
 <div id="interaction" hidden></div>
+<div id="monkDirection" hidden><span id="monkArrow" aria-hidden="true">▲</span><span>스님</span></div>
 <div id="chant" hidden><small id="source"></small><span id="words"></span></div>
 <section id="meet" aria-labelledby="meetTitle" hidden><strong id="meetTitle">스님과 대화</strong><span id="monkActions"><button id="greet">합장 인사</button><button id="recite">경전 독송 청하기</button></span><span id="dogActions" hidden><button id="sniff">손 내밀기</button><button id="pet">쓰다듬기</button></span><button id="rollCone" hidden>솔방울 굴려 주기</button><button id="sitCat" hidden>곁에 앉기</button><button id="dismiss" aria-label="교감 메뉴 닫기">닫기</button></section>
 <footer><div class="status"><span id="place"></span><span id="activity"></span><span id="hud" role="status" hidden></span></div>
@@ -114,7 +147,6 @@ button:hover,button[aria-pressed=true]{background:#e4dbe8}
 <button id="menu" aria-expanded="false" aria-controls="settings">설정</button>
 <div id="settings" hidden><button data-observe id="talk">스님과 대화 <b>↗</b></button><button data-observe id="visitDog">강아지와 교감 <b>↗</b></button><button data-observe id="visitWhite">백구와 놀기</button><button data-observe id="visitCat">고양이 곁에 앉기</button><button id="music" aria-pressed="false">배경음악 <b>꺼짐</b></button><label class="soundLevel">음악 음량 <input id="musicLevel" type="range" min="0" max="100" value="45"></label><button id="ambient" aria-pressed="false">환경음 <b>꺼짐</b></button><label class="soundLevel">환경 음량 <input id="ambientLevel" type="range" min="0" max="100" value="40"></label><button data-observe id="auto">자동 시점 <b></b></button><button id="speed">재생 속도 <b></b></button><button id="subs">독송 자막 <b></b></button><button id="voice">독송 음성 <b>꺼짐</b></button><button id="full">전체 화면 <b>⛶</b></button></div>
 </div></footer>
-<div id="modelControls"></div>
 <dialog id="dialogue" aria-labelledby="dialogueTitle">
   <div class="dialogue-heading">
     <h2 id="dialogueTitle"></h2>
@@ -125,10 +157,20 @@ button:hover,button[aria-pressed=true]{background:#e4dbe8}
     <div id="dialogueOptions" class="dialogue-buttons" role="group" aria-label="추천 대사" hidden></div>
     <div id="dialogueChoices" class="dialogue-buttons" role="group" aria-label="응답 선택" hidden></div>
     <form id="dialogueForm">
-      <input id="dialogueInput" aria-label="스님에게 할 말" type="text" autocomplete="off" placeholder="스님에게 말을 건네 보세요">
+      <input id="dialogueInput" aria-label="할 말" type="text" autocomplete="off" placeholder="말을 건네 보세요">
       <button id="dialogueSend" type="button">보내기</button>
     </form>
     <p id="dialogueStatus" role="status" hidden></p>
+  </div>
+</dialog>
+<dialog id="journal" aria-labelledby="journalTitle">
+  <div class="dialogue-heading">
+    <h2 id="journalTitle">오늘의 일지</h2>
+    <button id="journalClose" type="button" aria-label="일지 닫기">닫기</button>
+  </div>
+  <div class="dialogue-content">
+    <div id="journalEntries"></div>
+    <p id="journalEmpty">아직 기록이 없어요.</p>
   </div>
 </dialog>
 </main>

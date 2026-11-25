@@ -17,6 +17,10 @@ function until(control, condition, seconds) {
   assert.ok(condition(), '시뮬레이션 시간 안에 조건을 만족해야 한다');
 }
 
+function releaseMonk(control) {
+  for (let i = 0; i < 4; i++) control.togglePossession();
+}
+
 function advance(control, seconds) {
   for (let i = 0; i < seconds * 30; i++) control.tick(step);
 }
@@ -41,7 +45,7 @@ test('스님·황구 만남 중 빙의해도 황구와 세계는 계속 움직�
   assert.notEqual(sim.retreat.stage, 'empty');
   assert.ok(Math.hypot(dog.x - start.x, dog.y - start.y) > 1);
 
-  control.togglePossession();
+  releaseMonk(control);
   assert.equal(monk.possessed(), false);
   assert.equal(control.actor(), visitor);
   until(control, () => sim.completed > start.completed, 60);
@@ -56,7 +60,7 @@ test('빙의 해제 후 새 위치에서 원래 밭으로 가기 전에는 수�
   Object.assign(control.actor(), { x: 10.2, y: 9.1 });
   advance(control, 10);
   assert.equal(sim.harvests, harvests);
-  control.togglePossession();
+  releaseMonk(control);
   assert.deepEqual(monk.tile(), [10, 9]);
   assert.equal(sim.phase, 'walk');
   advance(control, 3);
@@ -73,7 +77,7 @@ test('보관한 접근 타일을 향한 길이 없으면 원본 스케줄러가 
 
   control.togglePossession();
   targets[0] = [17, 7]; // 연못으로 둘러싸여 산문에서 닿을 수 없는 타일
-  control.togglePossession();
+  releaseMonk(control);
   until(control, () => sim.completed === 1, 60);
   assert.equal(sim.id, 1);
   assert.deepEqual(monk.tile(), [10, 7]);
@@ -84,7 +88,7 @@ test('완료 뒤 쉬는 중에 빙의했다가 해제해도 같은 수확을 되
   until(control, () => sim.id === 11 && sim.phase === 'pause', 130);
   const { completed, harvests } = sim;
   control.togglePossession();
-  control.togglePossession();
+  releaseMonk(control);
   until(control, () => sim.completed > completed, 60);
   assert.notEqual(sim.id, 11);
   assert.equal(sim.harvests, harvests);
@@ -128,7 +132,7 @@ test('따라가기를 중단하거나 빙의하면 따라가기 명령이 끝난
   assert.equal(monk.follow(60), true);
   control.togglePossession();
   assert.equal(monk.snapshotBase().following, false);
-  control.togglePossession();
+  releaseMonk(control);
   until(control, () => sim.completed === 1, 30);
 });
 
@@ -204,13 +208,13 @@ test('hold: 빙의하면 취소되고, 빙의 중 hold는 무시된다', () => {
   const { sim, control, monk } = walking();
   monk.hold(60);
   control.togglePossession();
-  control.togglePossession();
+  releaseMonk(control);
   const pos = [sim.x, sim.y];
   until(control, () => sim.x !== pos[0] || sim.y !== pos[1], 20);
 
   control.togglePossession();
   monk.hold(60);
-  control.togglePossession();
+  releaseMonk(control);
   const pos2 = [sim.x, sim.y];
   until(control, () => sim.x !== pos2[0] || sim.y !== pos2[1], 20);
 });
@@ -227,4 +231,106 @@ test('hold: follow가 대체하고 stopFollow는 hold에 영향이 없다', () =
   monk.stopFollow();
   assert.equal(monk.snapshotBase().following, false);
   until(control, () => sim.completed >= 1, 90);
+});
+
+test('빙의는 방문객 → 스님 → 황구 → 백구 → 고양이 → 방문객으로 순환한다', () => {
+  const { sim, visitor, control, monk } = setup();
+  for (const [who, actor, handle] of [
+    ['monk', sim, monk],
+    ...['dog', 'white', 'cat'].map(who => [who, sim.animals[who], control.animals[who]]),
+    ['visitor', visitor, null]
+  ]) {
+    assert.equal(control.togglePossession(), who);
+    assert.equal(control.actor(), actor);
+    assert.equal(control.possessing(), who);
+    if (handle) {
+      assert.equal(handle.possessed(), true);
+      assert.deepEqual(handle.tile(), [Math.floor(actor.x), Math.floor(actor.y)]);
+    }
+  }
+  assert.equal(monk.possessed(), false);
+  assert.ok(Object.values(control.animals).every(handle => !handle.possessed()));
+});
+
+for (const who of ['dog', 'white', 'cat']) {
+  test(`동물 ${who}에 30초 동안 빙의해도 다른 NPC와 시계가 움직이고 해제 후 다시 걷는다`, () => {
+    const { sim, control } = setup();
+    for (const next of ['monk', 'dog', 'white', 'cat']) {
+      assert.equal(control.togglePossession(), next);
+      if (next === who) break;
+    }
+    const actor = sim.animals[who];
+    const other = who === 'dog' ? sim.animals.white : sim.animals.dog;
+    Object.assign(actor, { x: 8.5, y: 16.5, face: .5, step: 12 });
+    const before = [actor.x, actor.y, actor.face, actor.step];
+    const start = [other.x, other.y, sim.clock, sim.completed];
+    advance(control, 30);
+    assert.deepEqual([actor.x, actor.y, actor.face, actor.step], before);
+    assert.ok(sim.clock >= start[2] + 59);
+    assert.ok(sim.completed > start[3]);
+    assert.notDeepEqual([other.x, other.y], start.slice(0, 2));
+    control.togglePossession();
+    until(control, () => actor.x !== before[0] || actor.y !== before[1], 15);
+  });
+}
+
+for (const who of ['dog', 'white']) {
+  test(`합동 놀이 중 ${who}를 빙의하면 나머지 개가 자유롭게 움직인다`, () => {
+    const { sim, control } = setup();
+    control.togglePossession();
+    if (who === 'white') assert.equal(control.togglePossession(), 'dog');
+    const { group, dog, white } = sim.animals;
+    const partner = who === 'dog' ? white : dog;
+    Object.assign(group, { kind: 'chase', age: 0, pair: true });
+    partner.path = [[18.5, 12.5]];
+    const start = [partner.x, partner.y];
+    assert.equal(control.togglePossession(), who);
+    assert.equal(group.pair, false);
+    assert.deepEqual(partner.path, []);
+    until(control, () => partner.x !== start[0] || partner.y !== start[1], 20);
+    assert.equal(group.pair, false);
+  });
+}
+
+test('황구가 스님에게 다가오는 중 붙잡으면 공동 활동을 정리하고 조종 캐릭터를 바라본다', () => {
+  const { sim, control } = setup();
+  until(control, () => sim.meeting?.phase === 'approach', 30);
+  const dog = sim.animals.dog;
+  const start = [dog.x, dog.y];
+  control.animals.dog.hold(4);
+  assert.equal(sim.meeting, null);
+  advance(control, 3);
+  control.animals.dog.hold(4);
+  control.animals.dog.hold(1);
+  advance(control, 3);
+  assert.deepEqual([dog.x, dog.y], start);
+  assert.ok(Math.abs(Temple.turn(dog.face, Math.atan2(15.5 - dog.y, 11.5 - dog.x))) < .05);
+  until(control, () => dog.x !== start[0] || dog.y !== start[1], 15);
+});
+
+test('동물 말풍선은 해당 동물에 붙고 emote는 원본 자세를 약 3초 재생한다', () => {
+  const { sim, control } = setup();
+  control.animals.white.say('멍!', 1);
+  assert.deepEqual(control.animalSpeech().map(({ actor, line }) => [actor, line]), [[sim.animals.white, '멍!']]);
+  control.animals.white.emote('sit');
+  control.animals.cat.emote('purr');
+  advance(control, 2);
+  assert.deepEqual(control.animalSpeech(), []);
+  assert.equal(control.animalEmote('white'), 'sit');
+  assert.equal(control.animalEmote('cat'), 'purr');
+  advance(control, 2);
+  assert.equal(control.animalEmote('white'), null);
+  assert.equal(control.animalEmote('cat'), null);
+});
+
+test('동물 빙의 중 hold를 무시하고 빙의할 때 이전 hold를 해제한다', () => {
+  const { sim, control } = setup();
+  control.animals.dog.hold(60);
+  control.togglePossession();
+  assert.equal(control.togglePossession(), 'dog');
+  control.animals.dog.hold(60);
+  assert.equal(control.togglePossession(), 'white');
+  const { dog } = sim.animals;
+  const start = [dog.x, dog.y];
+  until(control, () => dog.x !== start[0] || dog.y !== start[1], 15);
 });

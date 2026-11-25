@@ -313,25 +313,28 @@ export function createScene(canvas) {
     line(c,p(.44,d/2,ridgeZ+.05),p(ww-.44,d/2,ridgeZ+.05),'#b1b4a3',scale*.044);
     for(const u of [.44,ww-.44])line(c,p(u,d/2,ridgeZ),p(u+(u<1?-.14:.14),d/2,ridgeZ+.14),'#586866',scale*.1);
   }
-  function drawDog(d,time,meeting){
+  function drawDog(d,time,meeting,emote){
     const [x,y]=project(d.x,d.y),k=scale/17,side=Math.cos(d.face)*cs-Math.sin(d.face)*sn;
     const pet=d.visitor?.kind==='pet'||meeting?.phase==='pet',offered=d.visitor?.kind==='sniff';
-    const walking=!d.visitor&&d.path.length>0,gait=walking?Math.sin(d.step):0;
-    const sniff=offered?-1.4+Math.sin(time*7)*.8:pet?-1.4:walking?0:1.6*(1+Math.sin(time*2));
+    const walking=d.walking||!d.visitor&&d.path.length>0,gait=walking?Math.sin(d.step):0;
+    const pose=d.walking?'walk':emote==='sit'?'rest':emote==='jump'?'invite':d.pose;
+    const sniff=offered||emote==='sniff'?-1.4+Math.sin(time*7)*.8:pet?-1.4:walking?0:1.6*(1+Math.sin(time*2));
     c.save();c.translate(x,y);c.scale(side<0?-k:k,k);
-    if(['rest','meditate'].includes(d.pose))c.scale(1.08,.62);
-    if(d.pose==='rain'&&d.shake)c.rotate(.12*Math.sin(time*30));
+    if(['rest','meditate'].includes(pose))c.scale(1.08,.62);
+    if(pose==='rain'&&d.shake)c.rotate(.12*Math.sin(time*30));
     oval(c,0,0,8,2.4,'#53604655');
+    if(emote==='jump'&&!d.walking)c.translate(0,-3*Math.max(0,Math.sin(time*8)));
     for(const [x,step] of [[-5,gait],[4,-gait],[-3,-gait],[6,gait]]){
       line(c,[x,-4],[x+step*1.6,-.8],'#a27949',2);
       rect(c,x+step*1.6-1,-1,2.4,1.6,'#f4dfae');
     }
-    const lift=Math.abs(gait)*.65,tail=Math.sin(time*(pet||d.tapUntil>time?10:walking?7:4))*(pet||d.tapUntil>time?2.4:1.2);
+    const wag=pet||emote==='wag'||d.tapUntil>time;
+    const lift=Math.abs(gait)*.65,tail=Math.sin(time*(wag?10:walking?7:4))*(wag?2.4:1.2);
     c.translate(0,-lift);
     line(c,[-5,-5],[-9,-8+tail],'#b78e5b',3);line(c,[-9,-8+tail],[-8,-11+tail],'#f1d6a1',3);
     line(c,[-8,-11+tail],[-5,-10+tail],'#edd3a3',2);
     oval(c,0,-5,6.5,3.5,d.white?'#dedbd0':'#ba8951');oval(c,1,-4.2,4.2,2.1,d.white?'#fff8e5':'#e7c894');
-    c.translate(-1.4*(1-Math.abs(side)),sniff+(['invite','drink','cone'].includes(d.pose)?3:0));
+    c.translate(-1.4*(1-Math.abs(side)),sniff+(['invite','drink','cone'].includes(pose)?3:0));
     poly(c,[[3,-9],[3,-15],[7,-11],[10,-14],[10,-9]],d.white?'#c0b6a6':'#8c6440');
     oval(c,6.6,-8.6,4.35,3.9,'#a47c50');oval(c,6.8,-9,3.9,3.5,d.white?'#fff8e8':'#ddb078');
     line(c,[3.7,-6],[7.1,-5.4],'#5a7668',1.3);oval(c,9.5,-7.6,2.6,1.7,'#fae1b1');
@@ -345,17 +348,21 @@ export function createScene(canvas) {
     }
     c.restore();
   }
-  function drawCat(a,time){
+  function drawCat(a,time,emote){
     const [x,y]=project(a.x,a.y),k=scale/19,dir=Math.cos(a.face)*cs-Math.sin(a.face)*sn<0?-1:1;
-    const loaf=['loaf','blink','listen','nuzzle'].includes(a.pose),stretch=a.pose==='stretch',rub=a.pose==='nuzzle'?Math.sin(time*3)*2:0;
+    const facePose=emote==='purr'?(Math.floor(time*2)%2?'nuzzle':'blink'):emote==='sit'?'loaf':emote==='sniff'?'listen':a.pose;
+    const pose=a.walking?'walk':facePose;
+    const loaf=['loaf','blink','listen','nuzzle'].includes(pose),stretch=pose==='stretch',rub=pose==='nuzzle'?Math.sin(time*3)*2:0;
     c.save();c.translate(x,y);c.scale(k*dir,k);oval(c,0,0,6,1.6,'#4f59484a');
-    if(!loaf){const step=Math.sin(a.step);for(const x of [-3,3])rect(c,x+step*Math.sign(x),-3,1.6,3,'#705e51');}
-    const y0=loaf?-3:-5;line(c,[-3,y0],[-7,y0-1],'#796a60',2);line(c,[-7,y0-1],[-8,y0-5+Math.sin(time*2)],'#685b52',1.7);
+    if(emote==='jump'&&!a.walking)c.translate(0,-3*Math.max(0,Math.sin(time*8)));
+    if(!loaf){const step=(a.walking||a.path.length)?Math.sin(a.step):0;for(const x of [-3,3])rect(c,x+step*Math.sign(x),-3,1.6,3,'#705e51');}
+    const tail=emote==='wag'?Math.sin(time*8)*2:Math.sin(time*2);
+    const y0=loaf?-3:-5;line(c,[-3,y0],[-7,y0-1],'#796a60',2);line(c,[-7,y0-1],[-8,y0-5+tail],'#685b52',1.7);
     oval(c,0,y0,stretch?7:5.4,loaf?3.1:3.5,'#a39783');
     for(let i=-2;i<=1;i++)rect(c,i*1.7,y0-2.7,1,2,'#70665c');
     c.translate(rub,stretch?3:0);poly(c,[[1,y0-3],[1,y0-8],[4,y0-6],[7,y0-8],[7,y0-2]],'#7d7065');
-    oval(c,4,y0-3,3.4,2.7,'#c7b59a');rect(c,5,y0-3.6,a.pose==='blink'?2:1,1,'#465047');
-    if(a.pose==='nuzzle'||a.pose==='blink'){line(c,[10,-6],[8,-5],'#d4a781',2);}
+    oval(c,4,y0-3,3.4,2.7,'#c7b59a');rect(c,5,y0-3.6,pose==='blink'?2:1,1,'#465047');
+    if(pose==='nuzzle'||pose==='blink'){line(c,[10,-6],[8,-5],'#d4a781',2);}
     c.restore();
   }
   function drawBird(b,i,time){
@@ -532,6 +539,36 @@ export function createScene(canvas) {
     rows.forEach((row,y)=>Array.from(row).forEach((p,x)=>{if(ink[p])rect(g,x,y,1,1,ink[p]);}));
     for(const [x,y] of feet)rect(g,x,rows.length-1+y,3,2,ink.o);
     return img;
+  }
+  const processionSprites=[
+    // 솔방울 요정
+    {
+      rows:['     gg', '    gg', '    oo', '   ohoo', '  oohhhoo', '  ohhhohoo', ' oohhhohooo',
+        ' ooooffoooo', '   ofefeo', '   offffo', '    oggo', '   oggggo', '   oooooo'],
+      ink:{o:'#654e45',h:'#ad7955',f:'#f4ceab',g:'#7d9a6d',e:'#473c34'}
+    },
+    // 연잎 토끼
+    {
+      rows:['    oo oo', '    of of', '    of of', '    ofofo', '  gggggggg', ' gghhghgg',
+        '  gggggggo', '   ofefef', '   offffoo', '    oggo', '   ogghgo', '   oooooo'],
+      ink:{o:'#5d6b60',h:'#a8c4a2',f:'#f6e5d6',g:'#7ba492',e:'#51464e'}
+    },
+    // 동자 꼬마
+    {
+      rows:['    ooo', '   ooooo', '  ooooooo', '  ooffffoo', '  ooffefeo', '   offffo',
+        '    gooo', '   ghgggo', '  gghggfgo', '  oghhggo', '   oghggo', '   oooooo'],
+      ink:{o:'#524852',h:'#ccb5cf',f:'#e9bfa2',g:'#917fa2',e:'#493c43'}
+    }
+  ].map(({rows,ink})=>[0,1].map(step=>skySprite(rows,ink,[[3-step,step],[6+step,1-step]])));
+  function drawProcession(actor){
+    const [x,y]=project(actor.x,actor.y),k=scale/17;
+    const stride=Math.sin(actor.step),sprite=processionSprites[actor.kind][Number(stride>0)];
+    const dir=Math.cos(actor.face)*cs-Math.sin(actor.face)*sn<0?-1:1;
+    oval(c,x,y,scale*.29,scale*.09,'#515c4759');
+    c.save();c.translate(Math.round(x),Math.round(y));c.scale(dir*k,k);
+    c.imageSmoothingEnabled=false;
+    c.drawImage(sprite,-sprite.width/2,-sprite.height-Math.abs(stride)*.5);
+    c.restore();
   }
   const skyWalkers=[
     {o:'#195d48',h:'#70e49b',g:'#26b578',E:'#143833',s:'#94bbc2',w:'#fff9e5'},
@@ -834,7 +871,7 @@ export function createScene(canvas) {
     ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);ctx.restore();
   }
   textureScenery(g);
-  function render(s,a,settled,{visitor,protagonist,observed,room}){
+  function render(s,a,settled,{visitor,protagonist,observed,room,animalEmote,easterFigures}){
     angle=a;cs=Math.cos(a);sn=Math.sin(a);
     mountains(s);
     oval(c,ox+scale*.25,oy+scale*1.18,scale*19.2,scale*8.5,'#435c5524');
@@ -848,10 +885,11 @@ export function createScene(canvas) {
     const cast=[
       {actor:s,height:.85,draw:()=>monk(s)},
       {actor:visitor,height:.80,draw:()=>visitorFigure(visitor)},
-      {actor:dog,height:.30,draw:()=>drawDog(dog,s.time,s.meeting)},
-      {actor:white,height:.30,draw:()=>drawDog(white,s.time)},
-      {actor:cat,height:.25,draw:()=>drawCat(cat,s.time)},
-      ...guests.map((actor,i)=>({actor,height:.65,draw:()=>guestFigure(actor,i,s)}))
+      {actor:dog,height:.30,draw:()=>drawDog(dog,s.time,s.meeting,animalEmote('dog'))},
+      {actor:white,height:.30,draw:()=>drawDog(white,s.time,null,animalEmote('white'))},
+      {actor:cat,height:.25,draw:()=>drawCat(cat,s.time,animalEmote('cat'))},
+      ...guests.map((actor,i)=>({actor,height:.65,draw:()=>guestFigure(actor,i,s)})),
+      ...easterFigures.map(actor=>({actor,height:.45,draw:()=>drawProcession(actor)}))
     ];
     const occupants=new Map(rooms.map(hall=>[hall,[]])),outdoors=[];
     for(const entry of cast){
@@ -898,7 +936,7 @@ export function createScene(canvas) {
         let opening=0;
         if(hall.room){
           const people=occupants.get(hall),doorX=Math.floor(x+w/2)+.5,doorY=y+d;
-          const distance=Math.min(...[s,visitor,...guests].map(p=>Math.hypot(p.x-doorX,p.y-doorY)));
+          const distance=Math.min(...[s,visitor,protagonist||s,...guests].map(p=>Math.hypot(p.x-doorX,p.y-doorY)));
           opening=people.length||hall.name===room?1:T.smooth(1-distance);
           if(opening>0)roomView(hall,s,people);
         }
