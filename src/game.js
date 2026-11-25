@@ -44,6 +44,7 @@ export function createGame(play, deps = {}) {
   let active = null; // {id, ac}
   let time = 0;
   let lastGreet = -Infinity;
+  let released = false; // follow·go_to 응답 뒤에는 붙잡지 않는다 (다시 열면 해제)
 
   const following = () => monk.snapshotBase().following;
   const options = () => templateOptions({ following: following(), errandState: errands.state() });
@@ -78,11 +79,14 @@ export function createGame(play, deps = {}) {
     if (time - lastGreet < GREET_COOLDOWN) return;
     if (distance(play.playerTile(), monk.tile()) > GREET_RANGE) return;
     lastGreet = time;
+    monk.hold(6);
     monk.say(greetingFor({ ...monk.snapshotBase(), meetings: memory.get('monk').meetings }));
   }
 
   function talkToMonk() {
     invalidate();
+    released = false;
+    monk.hold(4);
     dialogue.open(MONK_NAME);
     dialogue.setThinking(false);
     memory.recordMeeting('monk');
@@ -149,6 +153,7 @@ export function createGame(play, deps = {}) {
       ? { requestId: id, npc: 'monk', action: 'go_to', place: reply.place }
       : { requestId: id, npc: 'monk', action, place: null };
     const { executed } = applyAction(monk, request, { errands });
+    if (executed === 'follow' || executed === 'go_to') released = true;
 
     memory.pushTurn('monk', text, reply.say);
 
@@ -206,7 +211,11 @@ export function createGame(play, deps = {}) {
 
   const guard = fn => (...args) => { if (!disposed) fn(...args); };
 
-  play.onTick(guard(dt => { time += dt; greet(); }));
+  play.onTick(guard(dt => {
+    time += dt;
+    greet();
+    if (dialogue.isOpen() && !released) monk.hold(4);
+  }));
   play.onInteract(guard(target => {
     if (target === 'monk') talkToMonk();
     else if (target === 'well') atWell();

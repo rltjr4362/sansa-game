@@ -15,7 +15,7 @@ function fakeStorage() {
 function fakeMonk() {
   const m = {
     tileAt: [10, 12], isBusy: false, isPossessed: false, following: false,
-    calls: { follow: [], stopFollow: 0, goTo: [], say: [] },
+    calls: { follow: [], stopFollow: 0, goTo: [], say: [], hold: [] },
     possessed: () => m.isPossessed,
     busy: () => m.isBusy,
     tile: () => m.tileAt,
@@ -23,6 +23,7 @@ function fakeMonk() {
     follow(s) { m.calls.follow.push(s); if (m.isPossessed) return false; m.following = true; return true; },
     stopFollow() { m.calls.stopFollow++; m.following = false; },
     goTo(p) { m.calls.goTo.push(p); return true; },
+    hold(s) { m.calls.hold.push(s); },
     say(text, s) { m.calls.say.push(text); }
   };
   return m;
@@ -623,4 +624,42 @@ test('dispose: 로드된 엔진(워커)을 종료한다', async () => {
   assert.equal(play.button.hidden, true);
   game.dispose();
   assert.equal(e.disposed, 1);
+});
+
+// ── 붙잡아 두기 ────────────────────────────────────────────
+
+test('hold: 선제 인사 때 hold(6)', () => {
+  const { play, monk } = setup();
+  play.fire.tick(0.1);
+  assert.deepEqual(monk.calls.hold, [6]);
+});
+
+test('hold: E로 대화를 열면 hold(4), 열려 있는 동안 매 틱 hold(4)', () => {
+  const { play, monk } = setup();
+  play.fire.tick(0.1);
+  monk.calls.hold.length = 0;
+  play.fire.interact('monk');
+  assert.deepEqual(monk.calls.hold, [4]);
+  play.fire.tick(0.1);
+  play.fire.tick(0.1);
+  assert.deepEqual(monk.calls.hold, [4, 4, 4]);
+});
+
+test('hold: follow 응답 뒤에는 더 부르지 않고, 다시 열면 재개한다', async () => {
+  const router = manualRouter();
+  const { play, d, monk } = setup({ router });
+  play.fire.interact('monk');
+  d.submit('따라와 주세요');
+  await flush();
+  router.calls[0].resolve(replyOf('따르지요', 'follow'));
+  await flush();
+  assert.equal(monk.calls.follow.length, 1);
+  monk.calls.hold.length = 0;
+  play.fire.tick(0.1);
+  assert.deepEqual(monk.calls.hold, []);
+  d.close();
+  play.fire.interact('monk');
+  assert.deepEqual(monk.calls.hold, [4]);
+  play.fire.tick(0.1);
+  assert.deepEqual(monk.calls.hold, [4, 4]);
 });

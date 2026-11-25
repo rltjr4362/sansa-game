@@ -124,6 +124,7 @@ export function affinityBand(affinity) {
  *   follow(seconds: number): boolean,           // 방문객 뒤 1~2타일을 따라감. 빙의 중이면 false
  *   stopFollow(): void,                         // 따라가기 종료, 일과 재개(현재 타일에서 재탐색)
  *   goTo(place: keyof typeof PLACES): boolean,  // 장소 접근 타일로 이동. 경로 없거나 빙의 중이면 false. 도착하면 일과 재개
+ *   hold(seconds: number): void,                // 제자리에 멈춰 방문객을 바라본다. 일과는 보류했다가 시간이 끝나면 현재 타일에서 재개. 빙의 중이면 무시. 다시 부르면 시간 연장
  *   say(text: string, seconds?: number): void   // 스님 머리 위 말풍선 (대본 인사·짧은 대사)
  * }} MonkHandle
  */

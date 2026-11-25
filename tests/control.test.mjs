@@ -165,3 +165,66 @@ test('스냅샷의 장소는 명령의 목적지 대신 현재 타일로 판정�
   until(control, () => sim.x === 28.5 && sim.y === 10.5, 60);
   assert.equal(monk.snapshotBase().place, '우물');
 });
+
+// ── hold ──────────────────────────────────────────────────
+
+function walking() {
+  const s = setup();
+  until(s.control, () => s.sim.phase === 'walk', 30);
+  return s;
+}
+
+test('hold: 시간 동안 제자리에 서서 방문객을 보고, 끝나면 일과를 재개한다', () => {
+  const { sim, visitor, control, monk } = walking();
+  visitor.x = sim.x + 2; visitor.y = sim.y;
+  const pos = [sim.x, sim.y];
+  monk.hold(5);
+  advance(control, 3);
+  assert.deepEqual([sim.x, sim.y], pos);
+  assert.equal(sim.walking, false);
+  assert.ok(Math.abs(Temple.turn(sim.face, 0)) < .05);
+  advance(control, 3);
+  until(control, () => sim.x !== pos[0] || sim.y !== pos[1], 20);
+});
+
+test('hold: 다시 부르면 until이 연장되고 짧은 호출이 줄이지 않는다', () => {
+  const { sim, control, monk } = walking();
+  const pos = [sim.x, sim.y];
+  monk.hold(4);
+  advance(control, 3);
+  monk.hold(4);
+  monk.hold(1);
+  advance(control, 3);
+  assert.deepEqual([sim.x, sim.y], pos);
+  advance(control, 2);
+  until(control, () => sim.x !== pos[0] || sim.y !== pos[1], 20);
+});
+
+test('hold: 빙의하면 취소되고, 빙의 중 hold는 무시된다', () => {
+  const { sim, control, monk } = walking();
+  monk.hold(60);
+  control.togglePossession();
+  control.togglePossession();
+  const pos = [sim.x, sim.y];
+  until(control, () => sim.x !== pos[0] || sim.y !== pos[1], 20);
+
+  control.togglePossession();
+  monk.hold(60);
+  control.togglePossession();
+  const pos2 = [sim.x, sim.y];
+  until(control, () => sim.x !== pos2[0] || sim.y !== pos2[1], 20);
+});
+
+test('hold: follow가 대체하고 stopFollow는 hold에 영향이 없다', () => {
+  const { sim, control, monk } = walking();
+  const pos = [sim.x, sim.y];
+  monk.hold(60);
+  monk.stopFollow();
+  advance(control, 3);
+  assert.deepEqual([sim.x, sim.y], pos);
+  assert.equal(monk.follow(60), true);
+  assert.equal(monk.snapshotBase().following, true);
+  monk.stopFollow();
+  assert.equal(monk.snapshotBase().following, false);
+  until(control, () => sim.completed >= 1, 90);
+});

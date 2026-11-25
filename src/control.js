@@ -148,6 +148,13 @@ export function createControl(sim, visitor) {
     sim.tick(dt);
     if (possessed || command) sim.age = 0;
     if (!command) return;
+    if (command.type === 'hold') {
+      if (sim.time + 1e-9 >= command.until) { resumeRoutine(); return; }
+      sim.walking = false;
+      const target = Math.atan2(visitor.y - sim.y, visitor.x - sim.x);
+      sim.face += Temple.turn(sim.face, target) * Math.min(1, dt * 10);
+      return;
+    }
     if (command.type === 'goTo') {
       walkPath(sim, command.path, dt, 1.2);
       if (!command.path.length) resumeRoutine();
@@ -194,6 +201,17 @@ export function createControl(sim, visitor) {
       command = { type: 'goTo', path };
       if (!path.length) resumeRoutine();
       return true;
+    },
+    hold(seconds) {
+      if (possessed || !Number.isFinite(seconds) || seconds <= 0) return;
+      const until = sim.time + seconds;
+      if (command?.type === 'hold') {
+        command.until = Math.max(command.until, until);
+        return;
+      }
+      if (command) return;
+      suspendRoutine();
+      command = { type: 'hold', until };
     },
     say(text, seconds = 4) {
       speech = text ? { title: '스님', line: text, until: sim.time + seconds } : null;
