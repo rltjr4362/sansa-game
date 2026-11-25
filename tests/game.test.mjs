@@ -445,3 +445,182 @@ test('localStorage 접근이 SecurityError여도 createGame은 던지지 않고 
     else delete globalThis.localStorage;
   }
 });
+
+// ── 응답 적용 조건(대화 열림·방문객 조종·거리 4 이내) ─────────────
+
+const CHOICES = [{ label: '수락', id: 'accept' }, { label: '거절', id: 'decline' }];
+
+test('요청 후 스님이 멀어지면 늦은 청크·대사·행동·이력 모두 버린다', async () => {
+  const router = manualRouter();
+  const { play, d, monk, memory } = setup({ router });
+  play.fire.interact('monk');
+  d.submit('저 따라와 주실래요?');
+  const before = d.npcText;
+  monk.tileAt = [28, 12]; // 거리 19
+  router.calls[0].args.onText('{"say":"그러지요');
+  assert.equal(d.npcText, before);
+  router.calls[0].resolve(replyOf('그러지요.', 'follow'));
+  await flush();
+  assert.equal(d.npcText, before);
+  assert.deepEqual(monk.calls.follow, []);
+  assert.deepEqual(memory.get('monk').lastLines, []);
+  assert.equal(d.thinking, false);
+});
+
+test('거리 4는 허용, 5는 불허', async () => {
+  for (const [tile, ok] of [[[12, 15], true], [[13, 15], false]]) {
+    const router = manualRouter();
+    const { play, d, monk } = setup({ router });
+    play.fire.interact('monk');
+    d.submit('따라와');
+    monk.tileAt = tile; // 방문객 [10,13]
+    router.calls[0].resolve(replyOf('네.', 'follow'));
+    await flush();
+    assert.equal(monk.calls.follow.length, ok ? 1 : 0, String(tile));
+  }
+});
+
+test('조종 대상이 바뀌어 있으면(콜백 전이라도) 적용하지 않는다', async () => {
+  const router = manualRouter();
+  const { play, d, monk, memory } = setup({ router });
+  play.fire.interact('monk');
+  d.submit('따라와');
+  play.who = 'monk';
+  router.calls[0].args.onText('{"say":"네');
+  router.calls[0].resolve(replyOf('네.', 'follow'));
+  await flush();
+  assert.notEqual(d.npcText, '네.');
+  assert.deepEqual(monk.calls.follow, []);
+  assert.deepEqual(memory.get('monk').lastLines, []);
+});
+
+test('대화창이 (onClose 없이) 닫혀 있으면 적용하지 않는다', async () => {
+  const router = manualRouter();
+  const { play, d, monk } = setup({ router });
+  play.fire.interact('monk');
+  d.submit('따라와');
+  d.opened = false;
+  router.calls[0].resolve(replyOf('네.', 'follow'));
+  await flush();
+  assert.deepEqual(monk.calls.follow, []);
+});
+
+test('요청 중 부탁 상태가 바뀌면 offer_errand는 건너뛴다', async () => {
+  const router = manualRouter();
+  const { play, d, errands } = setup({ router });
+  play.fire.interact('monk');
+  errands.offer();
+  d.submit('도울 일 있을까요?');
+  errands.decline(); // offered → none
+  router.calls[0].resolve(replyOf('부탁드릴 일이 있어요.', 'offer_errand'));
+  await flush();
+  assert.equal(errands.state(), 'none');
+  assert.ok(!d.npcText.includes(ERRAND.offer));
+  assert.deepEqual(d.choices, []);
+});
+
+// ── 수락·거절 버튼 복원 ────────────────────────────────────
+
+test('제안된 부탁: 창을 다시 열면 수락·거절이 다시 보인다', async () => {
+  const { play, d, errands } = setup();
+  play.fire.interact('monk');
+  d.submit('도울 일 있을까요?');
+  await flush();
+  assert.equal(errands.state(), 'offered');
+  d.close();
+  play.fire.interact('monk');
+  assert.deepEqual(d.choices, CHOICES);
+  d.choose('accept');
+  assert.equal(errands.state(), 'accepted');
+});
+
+test('제안된 부탁: 다른 말을 해도 응답 후 수락·거절이 다시 보인다', async () => {
+  const { play, d, errands } = setup();
+  play.fire.interact('monk');
+  d.submit('도울 일 있을까요?');
+  await flush();
+  d.submit('우물이 어디예요?');
+  await flush();
+  assert.equal(errands.state(), 'offered');
+  assert.deepEqual(d.choices, CHOICES);
+});
+
+test('제안된 부탁: 응답 실패(Mock 대사) 뒤에도 수락·거절 복원', async () => {
+  const router = manualRouter();
+  const { play, d, errands } = setup({ router });
+  errands.offer();
+  play.fire.interact('monk');
+  d.submit('x');
+  router.calls[0].reject(new Error('boom'));
+  await flush();
+  assert.deepEqual(d.choices, CHOICES);
+});
+
+// ── 생각 중 표시 ───────────────────────────────────────────
+
+test('빙의 왕복 뒤 다시 열면 생각 중 표시가 꺼져 있다', async () => {
+  const router = manualRouter();
+  const { play, d } = setup({ router });
+  play.fire.interact('monk');
+  d.submit('x');
+  assert.equal(d.thinking, true);
+  play.fire.possess('monk');
+  play.fire.possess('visitor');
+  play.fire.interact('monk');
+  assert.equal(d.thinking, false);
+});
+
+// ── dispose와 깨우기 ───────────────────────────────────────
+
+function deferred() {
+  let resolve;
+  const promise = new Promise(r => { resolve = r; });
+  return { promise, resolve };
+}
+
+function wakeEngine() {
+  const e = { ready: false, loads: 0, disposed: 0, sup: deferred(), ld: deferred() };
+  e.supported = () => e.sup.promise;
+  e.load = () => { e.loads++; return e.ld.promise.then(() => { e.ready = true; }); };
+  e.dispose = () => { e.disposed++; e.ready = false; };
+  e.chat = async () => JSON.stringify({ say: 'AI', action: 'none', place: '없음', options: ['가', '나', '다'] });
+  return e;
+}
+
+test('dispose: supported() 대기 중이면 load()를 시작하지 않는다', async () => {
+  const e = wakeEngine();
+  const { play, game } = setup({ loadWebLLM: async () => e });
+  play.fire.button();
+  await flush();
+  game.dispose();
+  e.sup.resolve(true);
+  await flush();
+  assert.equal(e.loads, 0);
+});
+
+test('dispose: load() 대기 중이면 끝난 뒤 엔진을 정리하고 쓰지 않는다', async () => {
+  const e = wakeEngine();
+  const { play, game } = setup({ loadWebLLM: async () => e });
+  play.fire.button();
+  e.sup.resolve(true);
+  await flush();
+  assert.equal(e.loads, 1);
+  game.dispose();
+  assert.equal(e.disposed, 1); // 진행 중인 로드도 즉시 끊는다
+  e.ld.resolve();
+  await flush();
+  assert.ok(e.disposed >= 1);
+  assert.equal(play.button.hidden, false);
+});
+
+test('dispose: 로드된 엔진(워커)을 종료한다', async () => {
+  const e = wakeEngine();
+  const { play, game } = setup({ loadWebLLM: async () => e });
+  play.fire.button();
+  e.sup.resolve(true);
+  e.ld.resolve();
+  await flush();
+  assert.equal(play.button.hidden, true);
+  game.dispose();
+  assert.equal(e.disposed, 1);
+});
