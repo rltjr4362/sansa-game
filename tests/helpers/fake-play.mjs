@@ -57,7 +57,7 @@ export function fakeDialogue() {
   return d;
 }
 
-export function fakePlay({ legacy = false } = {}) {
+export function fakePlay({ legacy = false, title = false } = {}) {
   const cb = {};
   const monk = fakeMonk();
   const dialogue = fakeDialogue();
@@ -92,6 +92,18 @@ export function fakePlay({ legacy = false } = {}) {
     cb.pick = onPick;
     return { setText: t => p.picker.texts.push(t), hide: () => { p.picker.hidden = true; } };
   };
+  if (title) {
+    p.title = { choices: null, selected: undefined, available: [] };
+    p.showTitle = (choices, onStart) => {
+      p.title.choices = choices;
+      cb.start = onStart;
+      return {
+        setSelected: id => { p.title.selected = id; },
+        setAiAvailable: (ok, note) => p.title.available.push([ok, note])
+      };
+    };
+    p.fire.start = id => cb.start(id);
+  }
   p.onJournal = f => { cb.journal = f; };
   p.fire.pick = id => cb.pick(id);
   p.fire.journal = () => cb.journal();

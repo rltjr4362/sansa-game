@@ -22,6 +22,11 @@ const MODELS = [
   { id: 'Qwen3.5-2B-q4f16_1-MLC', label: '가볍게 · 1.1GB' }
 ];
 const MODEL_KEY = 'sansa.model';
+const TITLE_CHOICES = [
+  { id: MODELS[0].id, label: '똑똑한 AI 스님', detail: '처음 한 번 2.7GB · 말을 잘 알아들어요', recommended: true },
+  { id: MODELS[1].id, label: '가벼운 AI 스님', detail: '처음 한 번 1.1GB · 빨리 받아요' }
+];
+const TITLE_UNSUPPORTED = '이 브라우저에서는 AI를 쓸 수 없어요 · 대본 스님과 함께해요';
 const ANIMALS = ['dog', 'white', 'cat'];
 const PLACE_TARGETS = ['well', 'field', 'kitchen'];
 const HUD_DONE_SECONDS = 6;
@@ -354,6 +359,19 @@ export function createGame(play, deps = {}) {
     }
   }
 
+  // 모델을 내려받기 전에 이 브라우저가 WebGPU를 쓸 수 있는지만 확인한다.
+  async function probeSupport() {
+    let engine = null;
+    try {
+      engine = await loadWebLLM({ modelId: MODELS[0].id });
+      return Boolean(await engine.supported());
+    } catch {
+      return false;
+    } finally {
+      try { engine?.dispose?.(); } catch { /* 무시 */ }
+    }
+  }
+
   const guard = fn => (...args) => { if (!disposed) fn(...args); };
 
   play.onTick(guard(dt => {
@@ -378,15 +396,22 @@ export function createGame(play, deps = {}) {
   dialogue.onClose(guard(() => { invalidate(); convo = null; }));
 
   const picked = readPick();
+  function pickModel(id) {
+    if (MODELS.some(m => m.id === id) && wake(id)) savePick(id);
+  }
   if (typeof play.modelPicker === 'function') {
-    button = play.modelPicker(MODELS.map(m => ({ ...m })), guard(id => {
-      if (MODELS.some(m => m.id === id) && wake(id)) savePick(id);
-    }));
+    button = play.modelPicker(MODELS.map(m => ({ ...m })), guard(pickModel));
     button.setText(BUTTON.pickerIdle(picked?.label.split(' · ')[0]));
   } else { // 1단계 Play
     const model = picked ?? MODELS[0];
     button = play.modelButton(guard(() => wake(model.id)));
     button.setText(BUTTON.idle(model.label.split(' · ')[1]));
+  }
+  if (typeof play.showTitle === 'function') {
+    // id가 null이면 AI 없이 시작: 아무것도 불러오거나 저장하지 않는다.
+    const title = play.showTitle(TITLE_CHOICES.map(c => ({ ...c })), guard(id => { if (id !== null) pickModel(id); }));
+    title.setSelected(picked?.id ?? null);
+    probeSupport().then(ok => { if (!disposed) title.setAiAvailable(ok, ok ? undefined : TITLE_UNSUPPORTED); });
   }
   if (typeof play.onJournal === 'function') play.onJournal(() => (disposed ? [] : buildJournal(memory)));
   syncTargets();

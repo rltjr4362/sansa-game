@@ -493,3 +493,81 @@ test('옛 Play(modelPicker 없음): modelButton 폴백, 저장된 선택을 따�
   await flush();
   assert.equal(l2.calls[0].modelId, QWEN);
 });
+
+// ── 시작 화면 ──────────────────────────────────────────────
+
+const TITLE_CHOICES = [
+  { id: GEMMA, label: '똑똑한 AI 스님', detail: '처음 한 번 2.7GB · 말을 잘 알아들어요', recommended: true },
+  { id: QWEN, label: '가벼운 AI 스님', detail: '처음 한 번 1.1GB · 빨리 받아요' }
+];
+const NOTE = '이 브라우저에서는 AI를 쓸 수 없어요 · 대본 스님과 함께해요';
+
+test('시작 화면: 선택지를 넘기고 저장된 선택을 강조하며 지원되면 true', async () => {
+  const modelStorage = fakeStorage();
+  modelStorage.setItem('sansa.model', QWEN);
+  const l = loader();
+  const { play } = setup({ modelStorage, loadWebLLM: l.loadWebLLM }, { title: true });
+  assert.deepEqual(play.title.choices, TITLE_CHOICES);
+  assert.equal(play.title.selected, QWEN);
+  await flush();
+  assert.deepEqual(play.title.available, [[true, undefined]]);
+});
+
+test('시작 화면: 저장값이 없거나 잘못되면 setSelected(null)', () => {
+  const modelStorage = fakeStorage();
+  modelStorage.setItem('sansa.model', 'bogus');
+  assert.equal(setup({ modelStorage }, { title: true }).play.title.selected, null);
+});
+
+test('시작 화면: 지원 안 하면 setAiAvailable(false, 안내)', async () => {
+  const loadWebLLM = async () => ({ supported: async () => false });
+  const { play } = setup({ loadWebLLM }, { title: true });
+  await flush();
+  assert.deepEqual(play.title.available, [[false, NOTE]]);
+});
+
+test('시작 화면: onStart(모델)은 그 모델로 깨우고 저장한다', async () => {
+  const modelStorage = fakeStorage();
+  const l = loader();
+  const { play } = setup({ modelStorage, loadWebLLM: l.loadWebLLM }, { title: true });
+  await flush();
+  l.calls.length = 0;
+  play.fire.start(QWEN);
+  await flush();
+  assert.equal(l.calls.length, 1);
+  assert.equal(l.calls[0].modelId, QWEN);
+  assert.ok(play.picker.texts.includes('깨우는 중 50%'));
+  assert.equal(play.picker.hidden, true);
+  assert.equal(modelStorage.getItem('sansa.model'), QWEN);
+});
+
+test('시작 화면: onStart(null)은 불러오지도 저장하지도 않는다', async () => {
+  const modelStorage = fakeStorage();
+  modelStorage.setItem('sansa.model', GEMMA);
+  const l = loader();
+  const { play } = setup({ modelStorage, loadWebLLM: l.loadWebLLM }, { title: true });
+  await flush();
+  l.calls.length = 0;
+  play.fire.start(null);
+  await flush();
+  assert.equal(l.calls.length, 0);
+  assert.equal(modelStorage.getItem('sansa.model'), GEMMA);
+});
+
+test('시작 화면 뒤에도 우상단 선택기로 깨울 수 있다', async () => {
+  const l = loader();
+  const { play } = setup({ loadWebLLM: l.loadWebLLM }, { title: true });
+  play.fire.start(null);
+  await flush();
+  l.calls.length = 0;
+  play.fire.pick(GEMMA);
+  await flush();
+  assert.equal(l.calls[0].modelId, GEMMA);
+});
+
+test('showTitle이 없는 Play는 loadWebLLM을 미리 부르지 않는다', async () => {
+  const l = loader();
+  setup({ loadWebLLM: l.loadWebLLM });
+  await flush();
+  assert.equal(l.calls.length, 0);
+});
