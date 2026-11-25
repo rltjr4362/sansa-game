@@ -11,7 +11,7 @@ function setup(deps = {}) {
   const play = fakePlay({ legacy: true }); // 1단계 Play. 새 Play는 game2.test.mjs
   const memory = deps.memory ?? createMemory(fakeStorage(), () => new Date(2026, 10, 25, 12).getTime());
   const errands = deps.errands ?? createErrands(memory);
-  const game = createGame(play, { memory, errands, ...deps });
+  const game = createGame(play, { memory, errands, modelStorage: fakeStorage(), ...deps });
   return { play, memory, errands, game, d: play.dialogue, monk: play.monk };
 }
 

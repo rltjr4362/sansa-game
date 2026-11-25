@@ -202,3 +202,5 @@ const MONK_TO_ANIMAL = {
   ]
 };
 export const monkToAnimalLine = (npc, index) => wrap(MONK_TO_ANIMAL[npc], index);
+
+export const ANIMAL_STATUS = { scripted: '아직 낯설어서 소리와 몸짓으로만 답해요' };
