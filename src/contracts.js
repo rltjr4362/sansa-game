@@ -163,6 +163,7 @@ export function affinityBand(affinity) {
  *   modelPicker(choices: Array<{id: string, label: string}>, onPick: (id: string) => void): {setText(text: string): void, hide(): void},
  *   animals: Record<'dog'|'white'|'cat', AnimalHandle>,
  *   onJournal(cb: () => JournalEntry[]): void,   // J 키: Play가 cb()의 결과로 일지 패널을 열고 닫는다
+ *   showTitle(choices: TitleChoice[], onStart: (id: string|null) => void): TitleHandle, // 시작 화면. 시작 전에는 관찰 배경만 돌고 입력은 막힌다
  * }} Play
  */
 
@@ -183,3 +184,14 @@ export function affinityBand(affinity) {
  */
 
 /** @typedef {{title: string, lines: string[]}} JournalEntry */
+
+// ── 시작 화면 ──────────────────────────────────────────────────────────
+/** @typedef {{id: string, label: string, detail: string, recommended?: boolean}} TitleChoice  // 예: {id:'gemma-…', label:'똑똑한 AI 스님', detail:'처음 한 번 2.7GB'} */
+/**
+ * showTitle 반환값. onStart(id)는 AI 선택지면 그 id, "AI 없이 시작"이면 null로 한 번만 불린다.
+ * 그 뒤 Play는 시작 화면을 닫고 플레이 모드로 들어간다.
+ * @typedef {{
+ *   setAiAvailable(ok: boolean, note?: string): void,   // false면 AI 선택지를 비활성화하고 note 표시 (예: "이 브라우저는 WebGPU를 지원하지 않아요")
+ *   setSelected(id: string|null): void                  // 지난번 선택 강조
+ * }} TitleHandle
+ */
