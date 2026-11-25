@@ -83,3 +83,88 @@ test('snapshot 형태', () => {
   e.atWell();
   assert.deepEqual(e.snapshot(), { id: 'water', state: 'carrying' });
 });
+
+// ── 부탁 종류: water(우물→스님), veg(들밭→공양간) ───────────────
+
+test('offer는 종류를 물·채소 번갈아 고른다', () => {
+  const e = createErrands(fakeMemory());
+  assert.equal(e.kind(), null);
+  assert.equal(e.nextKind(), 'water');
+  e.offer(); e.accept(); e.atWell(); e.deliver();
+  assert.equal(e.nextKind(), 'veg');
+  e.offer();
+  assert.equal(e.kind(), 'veg');
+  assert.deepEqual(e.snapshot(), { id: 'veg', state: 'offered' });
+  e.accept(); e.atField(); e.deliver('kitchen');
+  assert.equal(e.nextKind(), 'water');
+  e.offer();
+  assert.equal(e.kind(), 'water');
+});
+
+test('거절해도 다음 제안은 다른 종류', () => {
+  const e = createErrands(fakeMemory());
+  e.offer(); e.decline();
+  assert.equal(e.kind(), null);
+  e.offer();
+  assert.equal(e.kind(), 'veg');
+});
+
+test('종류를 지정해 제안할 수 있다', () => {
+  const e = createErrands(fakeMemory());
+  assert.equal(e.offer('veg'), true);
+  assert.equal(e.kind(), 'veg');
+  const f = createErrands(fakeMemory());
+  assert.equal(f.offer('모름'), false);
+  assert.equal(f.state(), 'none');
+});
+
+test('채소: 들밭에서 거두고 공양간에서 전달, 보상은 스님에게 1회', () => {
+  const mem = fakeMemory();
+  const e = createErrands(mem);
+  e.offer('veg'); e.accept();
+  assert.equal(e.atWell(), false); // 우물은 물 부탁 전용
+  assert.equal(e.deliver('kitchen'), false); // 아직 안 거둠
+  assert.equal(e.atField(), true);
+  assert.equal(e.state(), 'carrying');
+  assert.equal(e.atField(), false);
+  assert.equal(e.deliver('monk'), false); // 채소는 스님이 아니라 공양간
+  assert.equal(e.deliver('kitchen'), true);
+  assert.equal(e.deliver('kitchen'), false);
+  assert.equal(mem.calls.filter(c => c[1] === 'done').length, 1);
+  assert.deepEqual(mem.calls.at(-1), ['monk', 'done']);
+});
+
+test('물: 공양간에 가져가도 전달되지 않고, atField는 안 된다', () => {
+  const e = createErrands(fakeMemory());
+  e.offer('water'); e.accept();
+  assert.equal(e.atField(), false);
+  e.atWell();
+  assert.equal(e.deliver('kitchen'), false);
+  assert.equal(e.deliver('monk'), true);
+});
+
+test('targets: 단계별로 켜야 하는 대상', () => {
+  const e = createErrands(fakeMemory());
+  assert.deepEqual(e.targets(), []);
+  e.offer('water');
+  assert.deepEqual(e.targets(), []);
+  e.accept();
+  assert.deepEqual(e.targets(), ['well']);
+  e.atWell();
+  assert.deepEqual(e.targets(), []); // 스님은 사람 대상이라 항상 켜짐
+  e.deliver();
+  assert.deepEqual(e.targets(), []);
+  e.offer('veg'); e.accept();
+  assert.deepEqual(e.targets(), ['field']);
+  e.atField();
+  assert.deepEqual(e.targets(), ['kitchen']);
+  e.deliver('kitchen');
+  assert.deepEqual(e.targets(), []);
+});
+
+test('한 번에 한 부탁: 진행 중에는 다른 종류도 제안 불가', () => {
+  const e = createErrands(fakeMemory());
+  e.offer('water'); e.accept();
+  assert.equal(e.offer('veg'), false);
+  assert.equal(e.kind(), 'water');
+});
