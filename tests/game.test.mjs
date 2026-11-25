@@ -427,3 +427,21 @@ test('dispose: 처리기 무력화, 활성 요청 중단', async () => {
   assert.equal(monk.calls.say.length, 0);
   assert.equal(router.calls.length, 1);
 });
+
+// ── 저장소 ────────────────────────────────────────────────
+
+test('localStorage 접근이 SecurityError여도 createGame은 던지지 않고 처리기를 등록한다', () => {
+  const saved = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true, get() { throw new DOMException('denied', 'SecurityError'); }
+  });
+  try {
+    const play = fakePlay();
+    assert.doesNotThrow(() => createGame(play));
+    play.fire.interact('monk');
+    assert.equal(play.dialogue.isOpen(), true);
+  } finally {
+    if (saved) Object.defineProperty(globalThis, 'localStorage', saved);
+    else delete globalThis.localStorage;
+  }
+});

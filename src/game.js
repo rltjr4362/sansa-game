@@ -130,8 +130,7 @@ export function createGame(play, deps = {}) {
       : { requestId: id, npc: 'monk', action: reply.action, place: null };
     const { executed } = applyAction(monk, request, { errands });
 
-    memory.pushLine('monk', 'user', text);
-    memory.pushLine('monk', 'assistant', reply.say);
+    memory.pushTurn('monk', text, reply.say);
 
     if (executed === 'offer_errand') {
       // Mock 대사("부탁드릴 일이 하나 있어요")만으로는 무슨 부탁인지 알 수 없어 부탁 문구를 붙인다.
