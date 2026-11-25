@@ -8,7 +8,7 @@ const MAX_COUNT = 9999;
 
 const blank = () => ({
   meetings: 0, affinity: 0, errands: { offered: 0, accepted: 0, done: 0 }, lastLines: [],
-  day: '', dayGain: 0
+  day: '', dayGain: 0, dayMeetings: 0
 });
 
 function dayKey(ms) {
@@ -45,6 +45,7 @@ function sanitize(raw) {
   if (Array.isArray(raw.lastLines)) n.lastLines = completeTurns(raw.lastLines);
   if (typeof raw.day === 'string') n.day = raw.day;
   n.dayGain = Math.min(int(raw.dayGain), DAILY_MEETING_CAP);
+  n.dayMeetings = int(raw.dayMeetings);
   return n;
 }
 
@@ -99,7 +100,8 @@ export function createMemory(storage, now = () => Date.now()) {
     recordMeeting(npc) {
       change(npc, r => {
         const today = dayKey(now());
-        if (r.day !== today) { r.day = today; r.dayGain = 0; }
+        if (r.day !== today) { r.day = today; r.dayGain = 0; r.dayMeetings = 0; }
+        r.dayMeetings = cap(r.dayMeetings + 1);
         r.meetings = cap(r.meetings + 1);
         if (r.dayGain < DAILY_MEETING_CAP) { r.dayGain++; r.affinity = cap(r.affinity + 1); }
       });
@@ -118,6 +120,11 @@ export function createMemory(storage, now = () => Date.now()) {
           ...r.lastLines, { role: 'user', content: userText }, { role: 'assistant', content: assistantText }
         ]);
       });
+    },
+    // 오늘(at이 속한 날) 만난 횟수. 일지용.
+    today(npc, at = now()) {
+      const r = rec(npc);
+      return r.day === dayKey(at) ? r.dayMeetings : 0;
     },
     band: npc => affinityBand(rec(npc).affinity)
   };
