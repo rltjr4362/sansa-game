@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  MONK_NAME, SYSTEM_RULES, PERSONA, greetingFor, openingFor, templateOptions, MOCK, ERRAND
+  MONK_NAME, SYSTEM_RULES, PERSONA, greetingFor, openingFor, templateOptions, MOCK, ERRAND,
+  NPC_NAMES, ANIMALS, ANIMAL_RULES, ERRANDS, scriptedAnimalLine, animalOptions, animalPartnerOptions, monkToAnimalLine
 } from '../src/lines.js';
 import { PLACES, SAY_MAX, OPTION_MAX } from '../src/contracts.js';
 
@@ -80,4 +81,102 @@ test('MOCK.goTo 조사: 받침 없음·ㄹ은 로, 그 외 으로', () => {
 
 test('ERRAND.accepted는 우물이 동쪽 밭 옆임을 알려 준다', () => {
   assert.equal(ERRAND.accepted, '고맙습니다. 우물은 동쪽 밭 옆에 있어요.');
+});
+
+// ── 2단계: 동물·채소 부탁 ─────────────────────────────────────
+
+const ANIMAL_IDS = ['dog', 'white', 'cat'];
+const EMOTES = ['wag', 'sit', 'jump', 'sniff', 'purr'];
+
+test('NPC_NAMES: 스님과 동물 이름', () => {
+  assert.deepEqual(NPC_NAMES, { monk: MONK_NAME, dog: '황구', white: '백구', cat: '고양이' });
+});
+
+test('동물 대본: 소리 + 괄호 행동 묘사, 60자 이하, emote 유효, 충분히 다양', () => {
+  for (const npc of ANIMAL_IDS) {
+    const seen = new Set();
+    for (let i = 0; i < 12; i++) {
+      const { say, emote } = scriptedAnimalLine(npc, i);
+      assert.match(say, /\(.+\)/, say);
+      assert.ok(len(say) <= SAY_MAX, say);
+      assert.ok(EMOTES.includes(emote), emote);
+      seen.add(say);
+    }
+    assert.ok(seen.size >= 4, `${npc} 대본 종류 ${seen.size}`);
+  }
+});
+
+test('동물 대본: 인덱스로 돌려 쓰며 결정적이다', () => {
+  for (const npc of ANIMAL_IDS) {
+    const n = new Set(Array.from({ length: 30 }, (_, i) => scriptedAnimalLine(npc, i).say)).size;
+    assert.equal(scriptedAnimalLine(npc, 0).say, scriptedAnimalLine(npc, n).say);
+    assert.equal(scriptedAnimalLine(npc, -1).say, scriptedAnimalLine(npc, n - 1).say);
+  }
+});
+
+test('동물마다 성격이 다르다: 소리와 페르소나', () => {
+  assert.match(scriptedAnimalLine('dog', 0).say, /멍/);
+  assert.match(scriptedAnimalLine('white', 0).say, /왈|컹/);
+  assert.match(scriptedAnimalLine('cat', 0).say, /야옹|냐앙|그르릉|냥|…/);
+  assert.match(ANIMALS.dog.persona, /황구/);
+  assert.match(ANIMALS.dog.persona, /냄새|먹/);
+  assert.match(ANIMALS.white.persona, /백구/);
+  assert.match(ANIMALS.white.persona, /솔방울/);
+  assert.match(ANIMALS.cat.persona, /도도|무심/);
+  assert.match(ANIMALS.cat.persona, /볕|양지/);
+});
+
+test('동물 규칙: JSON·action none·60자·옵션 3개', () => {
+  assert.match(ANIMAL_RULES, /JSON/);
+  assert.match(ANIMAL_RULES, /none/);
+  assert.match(ANIMAL_RULES, /60/);
+});
+
+test('동물 추천: 항상 3개, 각 20자 이하', () => {
+  for (const npc of ANIMAL_IDS) {
+    for (const o of [animalOptions(npc), animalPartnerOptions(npc)]) {
+      assert.equal(o.length, 3);
+      for (const s of o) assert.ok(s.trim() && len(s) <= OPTION_MAX, s);
+    }
+  }
+});
+
+test('스님이 동물에게 하는 말: 60자 이하, 돌려 쓴다', () => {
+  for (const npc of ANIMAL_IDS) {
+    for (let i = 0; i < 6; i++) {
+      const s = monkToAnimalLine(npc, i);
+      assert.ok(s.trim() && len(s) <= SAY_MAX, s);
+    }
+    assert.notEqual(monkToAnimalLine(npc, 0), monkToAnimalLine(npc, 1));
+  }
+  assert.match(monkToAnimalLine('dog', 0), /황구/);
+  assert.match(monkToAnimalLine('white', 0), /백구/);
+});
+
+test('SYSTEM_RULES: 동물 상대와 offer_errand 제한', () => {
+  assert.match(SYSTEM_RULES, /동물/);
+  assert.match(SYSTEM_RULES, /offer_errand는 .*방문객/);
+});
+
+test('ERRANDS: 물·채소 모두 문구가 60자 이하이고 ERRAND는 물 부탁', () => {
+  assert.equal(ERRANDS.water, ERRAND);
+  assert.deepEqual(Object.keys(ERRANDS), ['water', 'veg']);
+  for (const e of Object.values(ERRANDS)) {
+    for (const k of ['offer', 'accepted', 'declined', 'hudAccepted', 'hudCarrying', 'delivered', 'label', 'carryingLabel']) {
+      assert.ok(typeof e[k] === 'string' && e[k].trim() && len(e[k]) <= SAY_MAX, `${e.id}.${k}`);
+    }
+  }
+  assert.match(ERRANDS.veg.offer, /채소|공양간/);
+  assert.match(ERRANDS.veg.accepted, /들밭/);
+});
+
+test('templateOptions: 채소 부탁 단계별 추천', () => {
+  for (const errandState of ['accepted', 'carrying']) {
+    const w = templateOptions({ errandState, errandKind: 'water' });
+    const v = templateOptions({ errandState, errandKind: 'veg' });
+    assert.equal(v.length, 3);
+    assert.notDeepEqual(w, v);
+    for (const s of v) assert.ok(len(s) <= OPTION_MAX, s);
+  }
+  assert.deepEqual(templateOptions({ errandState: 'accepted' }), templateOptions({ errandState: 'accepted', errandKind: 'water' }));
 });

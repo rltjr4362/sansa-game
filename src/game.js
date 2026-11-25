@@ -5,7 +5,11 @@ import { createMockLLM } from './llm/mock.js';
 import { createRouter } from './llm/router.js';
 import { createBrain } from './brain.js';
 import { applyAction } from './actions.js';
-import { MONK_NAME, ERRAND, MOCK, greetingFor, openingFor, templateOptions } from './lines.js';
+import { buildJournal } from './journal.js';
+import {
+  NPC_NAMES, ERRANDS, MOCK, ANIMAL_STATUS, greetingFor, openingFor, templateOptions,
+  scriptedAnimalLine, animalOptions, animalPartnerOptions, monkToAnimalLine
+} from './lines.js';
 
 const GREET_RANGE = 3;
 // 응답을 적용할 수 있는 거리. 계약에 E 판정 질의가 없어 맨해튼 거리로 근사한다.
@@ -13,19 +17,37 @@ const TALK_RANGE = 4;
 const ERRAND_CHOICES = [{ label: '수락', id: 'accept' }, { label: '거절', id: 'decline' }];
 const GREET_COOLDOWN = 60;
 const MOCK_STATUS = '대본 스님이 답해요 · 우상단에서 AI 스님을 깨울 수 있어요';
+const MODELS = [
+  { id: 'gemma-4-E2B-it-q4f16_1-MLC', label: '똑똑하게 · 2.7GB' },
+  { id: 'Qwen3.5-2B-q4f16_1-MLC', label: '가볍게 · 1.1GB' }
+];
+const MODEL_KEY = 'sansa.model';
+const ANIMALS = ['dog', 'white', 'cat'];
+const PLACE_TARGETS = ['well', 'field', 'kitchen'];
+const HUD_DONE_SECONDS = 6;
+// 대본은 만남마다 이만큼씩 건너뛰어 다시 만났을 때 같은 줄이 바로 나오지 않게 한다.
+const SCRIPT_STRIDE = 3;
 const BUTTON = {
-  idle: 'AI 스님 깨우기 (약 2.7GB)',
+  idle: size => `AI 스님 깨우기 (약 ${size})`,
+  pickerIdle: label => (label ? `AI 스님 깨우기 · ${label}` : 'AI 스님 깨우기'),
   unsupported: '이 기기에선 대본 스님',
   progress: p => `깨우는 중 ${Math.round(p * 100)}%`,
   failed: '깨우기 실패 · 대본 스님'
 };
 
 const distance = ([ax, ay], [bx, by]) => Math.abs(ax - bx) + Math.abs(ay - by);
+const isAnimal = who => ANIMALS.includes(who);
+
+// 접근이 막힐 수 있는 localStorage. 실패하면 null.
+function defaultStorage() {
+  try { return globalThis.localStorage ?? null; } catch { return null; }
+}
 
 export function createGame(play, deps = {}) {
   const { monk, dialogue } = play;
   const memory = deps.memory ?? createMemory();
   const errands = deps.errands ?? createErrands(memory);
+  const modelStorage = deps.modelStorage === undefined ? defaultStorage() : deps.modelStorage;
 
   // 라우터는 이 손잡이를 주 엔진으로 본다. WebLLM이 깨어나면 llm이 채워진다.
   let llm = null;
@@ -45,32 +67,63 @@ export function createGame(play, deps = {}) {
   let time = 0;
   let lastGreet = -Infinity;
   let released = false; // follow·go_to 응답 뒤에는 붙잡지 않는다 (다시 열면 해제)
+  let convo = null; // 열려 있는 대화 {npc: 말을 받는 쪽, partner: 말을 건 쪽(조종 중인 캐릭터), turn}
+  let hudClearAt = null; // 안내 줄을 자동으로 지울 시각(time 기준)
+  let thanksPending = false; // 채소를 가져다 놓은 뒤 스님이 다음 대화에서 고마워한다
 
   const following = () => monk.snapshotBase().following;
-  const options = () => templateOptions({ following: following(), errandState: errands.state() });
-  const status = () => (router.active() === 'mock' ? MOCK_STATUS : '');
-  // 제안된 부탁이 있으면 수락·거절을 (다시) 보여 준다.
-  const showChoices = () => dialogue.setChoices(errands.state() === 'offered' ? ERRAND_CHOICES : []);
-  // 대화가 아직 이어지는 중인가: 창이 열려 있고, 방문객을 조종 중이며, 스님이 가까이 있다.
-  const inConversation = () =>
-    dialogue.isOpen() && play.possessing() === 'visitor' &&
-    distance(play.playerTile(), monk.tile()) <= TALK_RANGE;
+  const animalOf = npc => play.animals?.[npc] ?? null;
+  const npcTile = npc => (npc === 'monk' ? monk.tile() : animalOf(npc)?.tile() ?? null);
+  const holdNpc = (npc, seconds) => (npc === 'monk' ? monk : animalOf(npc))?.hold?.(seconds);
+  const hud = text => { hudClearAt = null; play.setHud(text); };
+
+  // 동물은 호감도가 '낯익음' 이상이고 LLM이 깨어 있을 때만 LLM으로 답한다. 그 밖에는 대본.
+  const animalUsesLLM = npc => router.active() === 'llm' && memory.band(npc) !== 'new';
+  const options = () => {
+    if (convo && isAnimal(convo.partner)) return animalPartnerOptions(convo.partner);
+    return templateOptions({ following: following(), errandState: errands.state(), errandKind: errands.kind() });
+  };
+  const status = () => {
+    if (convo && isAnimal(convo.npc)) return animalUsesLLM(convo.npc) ? '' : ANIMAL_STATUS.scripted;
+    return router.active() === 'mock' ? MOCK_STATUS : '';
+  };
+  // 제안된 부탁이 있으면 수락·거절을 (다시) 보여 준다. 부탁은 방문객과 스님 사이의 일이다.
+  const showChoices = () => dialogue.setChoices(
+    convo?.npc === 'monk' && convo.partner === 'visitor' && errands.state() === 'offered' ? ERRAND_CHOICES : []);
+  // 대화가 아직 이어지는 중인가: 창이 열려 있고, 말을 건 캐릭터를 아직 조종 중이며, 상대가 가까이 있다.
+  const inConversation = () => {
+    if (!convo || !dialogue.isOpen() || play.possessing() !== convo.partner) return false;
+    const tile = npcTile(convo.npc);
+    return tile !== null && distance(play.playerTile(), tile) <= TALK_RANGE;
+  };
+
+  // 지금 단계에서 필요한 장소 대상만 켠다(스님·동물은 사람 대상이라 항상 켜짐). 바뀐 것만 보낸다.
+  const sentTargets = {};
+  function syncTargets() {
+    if (typeof play.setTargetEnabled !== 'function') return;
+    const want = errands.targets();
+    for (const target of PLACE_TARGETS) {
+      const on = want.includes(target);
+      if (sentTargets[target] === on) continue;
+      sentTargets[target] = on;
+      play.setTargetEnabled(target, on);
+    }
+  }
 
   function invalidate() {
     active?.ac.abort();
     active = null;
   }
 
-  function snapshot() {
-    return {
-      npc: 'monk',
-      ...monk.snapshotBase(),
-      partner: 'visitor',
-      errand: errands.snapshot(),
-      meetings: memory.get('monk').meetings,
-      affinityBand: memory.band('monk'),
-      history: memory.get('monk').lastLines
-    };
+  function snapshot({ npc, partner }) {
+    const base = monk.snapshotBase();
+    const rec = memory.get(npc);
+    const common = { npc, clock: base.clock, weather: base.weather, partner };
+    const tail = { meetings: rec.meetings, affinityBand: memory.band(npc), history: rec.lastLines };
+    if (isAnimal(npc)) {
+      return { ...common, place: null, activity: '', following: false, errand: null, ...tail };
+    }
+    return { ...common, place: base.place, activity: base.activity, following: base.following, errand: errands.snapshot(), ...tail };
   }
 
   function greet() {
@@ -83,31 +136,86 @@ export function createGame(play, deps = {}) {
     monk.say(greetingFor({ ...monk.snapshotBase(), meetings: memory.get('monk').meetings }));
   }
 
-  function talkToMonk() {
+  function openConversation(npc, partner) {
     invalidate();
     released = false;
-    monk.hold(4);
-    dialogue.open(MONK_NAME);
+    convo = { npc, partner, turn: 0 };
+    holdNpc(npc, 4);
+    dialogue.open(NPC_NAMES[npc]);
     dialogue.setThinking(false);
-    memory.recordMeeting('monk');
-    if (errands.state() === 'carrying' && errands.deliver()) {
-      dialogue.setNpcText(ERRAND.delivered);
-      play.setHud('');
+    memory.recordMeeting(npc);
+  }
+
+  function talkToMonk() {
+    const partner = play.possessing();
+    if (partner === 'monk') return;
+    openConversation('monk', partner);
+    const { meetings } = memory.get('monk');
+    if (isAnimal(partner)) {
+      dialogue.setNpcText(monkToAnimalLine(partner, meetings - 1));
+    } else if (errands.state() === 'carrying' && errands.deliver('monk')) {
+      dialogue.setNpcText(ERRANDS.water.delivered);
+      hud('');
+    } else if (thanksPending) {
+      thanksPending = false;
+      dialogue.setNpcText(ERRANDS.veg.thanks);
     } else {
-      dialogue.setNpcText(openingFor({ meetings: memory.get('monk').meetings, affinityBand: memory.band('monk') }));
+      dialogue.setNpcText(openingFor({ meetings, affinityBand: memory.band('monk') }));
     }
     showChoices();
     dialogue.setOptions(options());
     dialogue.setStatus(status());
+    syncTargets();
   }
 
-  function atWell() {
-    if (errands.state() === 'accepted' && errands.atWell()) play.setHud(ERRAND.hudCarrying);
+  // 동물 대본: 만남마다 SCRIPT_STRIDE씩, 같은 대화 안에서는 한 줄씩 넘어간다.
+  const scriptLine = ({ npc, turn }) =>
+    scriptedAnimalLine(npc, (memory.get(npc).meetings - 1) * SCRIPT_STRIDE + turn);
+
+  function talkToAnimal(npc) {
+    const animal = animalOf(npc);
+    const partner = play.possessing();
+    if (!animal || partner === npc) return;
+    openConversation(npc, partner);
+    const line = scriptLine(convo);
+    dialogue.setNpcText(line.say);
+    animal.emote?.(line.emote);
+    dialogue.setChoices([]);
+    dialogue.setOptions(animalOptions(npc));
+    dialogue.setStatus(status());
+  }
+
+  function atPlace(target) {
+    if (play.possessing() !== 'visitor') return; // 부탁은 방문객이 한다
+    if (target === 'well' && errands.atWell()) {
+      hud(ERRANDS.water.hudCarrying);
+    } else if (target === 'field' && errands.atField()) {
+      hud(ERRANDS.veg.hudCarrying);
+    } else if (target === 'kitchen' && errands.deliver('kitchen')) {
+      hud(ERRANDS.veg.hudDelivered);
+      hudClearAt = time + HUD_DONE_SECONDS;
+      thanksPending = true;
+    }
+    syncTargets();
+  }
+
+  // 대본으로 답한다(동물, LLM 없이). 이력도 남겨 일지에 한 줄이 보이게 한다.
+  function scriptedReply(text) {
+    invalidate();
+    convo.turn++;
+    const line = scriptLine(convo);
+    memory.pushTurn(convo.npc, text, line.say);
+    dialogue.setNpcText(line.say);
+    animalOf(convo.npc)?.emote?.(line.emote);
+    dialogue.setChoices([]);
+    dialogue.setOptions(animalOptions(convo.npc));
   }
 
   async function submit(text) {
-    if (disposed) return;
+    if (disposed || !convo) return;
+    if (isAnimal(convo.npc) && !animalUsesLLM(convo.npc)) { scriptedReply(text); return; }
     invalidate();
+    const c = convo;
     const id = ++seq;
     const ac = new AbortController();
     active = { id, ac };
@@ -122,7 +230,7 @@ export function createGame(play, deps = {}) {
     try {
       result = await brain.ask({
         requestId: id,
-        snapshot: snapshot(),
+        snapshot: snapshot(c),
         userText: text,
         signal: ac.signal,
         onSay: say => { if (isActive() && inConversation()) dialogue.setNpcText(say); }
@@ -131,7 +239,7 @@ export function createGame(play, deps = {}) {
       if (e?.name === 'AbortError' || !isActive()) return;
       active = null;
       dialogue.setThinking(false);
-      if (inConversation()) dialogue.setNpcText(MOCK.fallback);
+      if (inConversation()) dialogue.setNpcText(isAnimal(c.npc) ? scriptLine({ ...c, turn: c.turn + 1 }).say : MOCK.fallback);
       showChoices();
       dialogue.setOptions(options());
       return;
@@ -145,49 +253,86 @@ export function createGame(play, deps = {}) {
       if (dialogue.isOpen()) { showChoices(); dialogue.setOptions(options()); }
       return;
     }
+    c.turn++;
+    if (isAnimal(c.npc)) finishAnimal(c, text, result);
+    else finishMonk(c, text, result, id, errandAtStart);
+    syncTargets();
+  }
 
-    const { reply } = result;
-    // 요청 중 부탁 상태가 바뀌었으면 이전 상태를 보고 고른 offer_errand는 따르지 않는다.
-    const action = reply.action === 'offer_errand' && errands.state() !== errandAtStart ? 'none' : reply.action;
+  // 동물 답: 행동은 none만. LLM이 Mock으로 떨어졌으면 스님 말투를 쓰지 않고 대본으로 답한다.
+  function finishAnimal(c, text, { reply, source }) {
+    const line = scriptLine(c);
+    const scripted = source === 'mock';
+    const say = scripted ? line.say : reply.say || '…';
+    memory.pushTurn(c.npc, text, say);
+    dialogue.setNpcText(say);
+    animalOf(c.npc)?.emote?.(line.emote);
+    showChoices();
+    dialogue.setOptions(scripted ? animalOptions(c.npc) : reply.options ?? animalOptions(c.npc));
+  }
+
+  function finishMonk(c, text, { reply, source }, id, errandAtStart) {
+    // 요청 중 부탁 상태가 바뀌었거나 상대가 방문객이 아니면 offer_errand는 따르지 않는다.
+    const action = reply.action === 'offer_errand' && (errands.state() !== errandAtStart || c.partner !== 'visitor')
+      ? 'none' : reply.action;
     const request = action === 'go_to'
       ? { requestId: id, npc: 'monk', action: 'go_to', place: reply.place }
       : { requestId: id, npc: 'monk', action, place: null };
     const { executed } = applyAction(monk, request, { errands });
     if (executed === 'follow' || executed === 'go_to') released = true;
 
-    memory.pushTurn('monk', text, reply.say);
+    // 대본 스님이 동물에게 일반 대답을 하면 동물에게 하는 말로 바꾼다.
+    const toAnimal = isAnimal(c.partner) && source === 'mock' && reply.action === 'none';
+    const say = toAnimal ? monkToAnimalLine(c.partner, memory.get('monk').meetings - 1 + c.turn) : reply.say;
+    memory.pushTurn('monk', text, say);
 
     if (executed === 'offer_errand') {
       // Mock 대사("부탁드릴 일이 하나 있어요")만으로는 무슨 부탁인지 알 수 없어 부탁 문구를 붙인다.
-      dialogue.setNpcText(reply.say ? `${reply.say} ${ERRAND.offer}` : ERRAND.offer);
+      const offer = ERRANDS[errands.kind()].offer;
+      dialogue.setNpcText(say ? `${say} ${offer}` : offer);
     } else {
-      dialogue.setNpcText(reply.say || '…');
+      dialogue.setNpcText(say || '…');
     }
     showChoices();
-    dialogue.setOptions(reply.options ?? options());
+    dialogue.setOptions(toAnimal ? options() : reply.options ?? options());
   }
 
   function choose(id) {
+    const kind = errands.kind();
     if (id === 'accept' && errands.accept()) {
-      dialogue.setNpcText(ERRAND.accepted);
-      play.setHud(ERRAND.hudAccepted);
+      dialogue.setNpcText(ERRANDS[kind].accepted);
+      hud(ERRANDS[kind].hudAccepted);
     } else if (id === 'decline' && errands.decline()) {
-      dialogue.setNpcText(ERRAND.declined);
+      dialogue.setNpcText(ERRANDS[kind].declined);
     } else {
       return;
     }
     dialogue.setChoices([]);
     dialogue.setOptions(options());
+    syncTargets();
   }
+
+  const readPick = () => {
+    try {
+      const id = modelStorage?.getItem(MODEL_KEY);
+      return MODELS.find(m => m.id === id) ?? null;
+    } catch { return null; }
+  };
+  const savePick = id => { try { modelStorage?.setItem(MODEL_KEY, id); } catch { /* 기억하지 못해도 동작 */ } };
 
   let button = null;
   let waking = false;
   let pending = null; // 깨우는 중인 엔진(dispose 때 정리용)
-  async function wake() {
-    if (waking || llm) return;
+  // 시작했으면 true. 이미 깨우는 중이거나 깨어 있으면 false.
+  function wake(modelId) {
+    if (waking || llm) return false;
     waking = true;
+    run(modelId);
+    return true;
+  }
+  async function run(modelId) {
     try {
-      const engine = await loadWebLLM({ onProgress: p => { if (!disposed) button.setText(BUTTON.progress(p)); } });
+      const engine = await loadWebLLM({ modelId, onProgress: p => { if (!disposed) button.setText(BUTTON.progress(p)); } });
       if (disposed) return;
       pending = engine;
       const ok = await engine.supported();
@@ -214,21 +359,37 @@ export function createGame(play, deps = {}) {
   play.onTick(guard(dt => {
     time += dt;
     greet();
-    if (dialogue.isOpen() && !released) monk.hold(4);
+    if (dialogue.isOpen() && convo && !released) holdNpc(convo.npc, 4);
+    if (hudClearAt !== null && time >= hudClearAt) hud('');
+    syncTargets();
   }));
   play.onInteract(guard(target => {
     if (target === 'monk') talkToMonk();
-    else if (target === 'well') atWell();
+    else if (isAnimal(target)) talkToAnimal(target);
+    else atPlace(target);
   }));
   play.onPossessChange(guard(() => {
     invalidate();
+    convo = null;
     if (dialogue.isOpen()) dialogue.close();
   }));
   dialogue.onSubmit(guard(submit));
   dialogue.onChoice(guard(choose));
-  dialogue.onClose(guard(invalidate));
-  button = play.modelButton(guard(wake));
-  button.setText(BUTTON.idle);
+  dialogue.onClose(guard(() => { invalidate(); convo = null; }));
+
+  const picked = readPick();
+  if (typeof play.modelPicker === 'function') {
+    button = play.modelPicker(MODELS.map(m => ({ ...m })), guard(id => {
+      if (MODELS.some(m => m.id === id) && wake(id)) savePick(id);
+    }));
+    button.setText(BUTTON.pickerIdle(picked?.label.split(' · ')[0]));
+  } else { // 1단계 Play
+    const model = picked ?? MODELS[0];
+    button = play.modelButton(guard(() => wake(model.id)));
+    button.setText(BUTTON.idle(model.label.split(' · ')[1]));
+  }
+  if (typeof play.onJournal === 'function') play.onJournal(() => (disposed ? [] : buildJournal(memory)));
+  syncTargets();
 
   return {
     dispose() {

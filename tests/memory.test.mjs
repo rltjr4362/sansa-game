@@ -187,3 +187,34 @@ test('손상된 수치: 비유한·안전 정수 밖 카운터는 0, dayGain은 
   m2.recordMeeting('monk');
   assert.equal(m2.get('monk').affinity, 1);
 });
+
+test('동물 키(dog·white·cat)도 NPC별로 따로 기록된다', () => {
+  const mem = createMemory(fakeStorage(), () => at(2026, 10, 25));
+  for (const npc of ['dog', 'white', 'cat']) mem.recordMeeting(npc);
+  mem.recordMeeting('dog');
+  assert.equal(mem.get('dog').meetings, 2);
+  assert.equal(mem.get('white').meetings, 1);
+  assert.equal(mem.get('monk').meetings, 0);
+  // 동물 하루 상한 5: 6번째 만남은 호감도를 올리지 않는다 (스님은 3)
+  for (let i = 0; i < 4; i++) mem.recordMeeting('dog');
+  assert.equal(mem.get('dog').meetings, 6);
+  assert.equal(mem.get('dog').affinity, 5);
+  for (let i = 0; i < 4; i++) mem.recordMeeting('monk');
+  assert.equal(mem.get('monk').affinity, 3);
+});
+
+test('today: 오늘 만난 횟수, 날이 바뀌면 0부터', () => {
+  let t = at(2026, 10, 25);
+  const st = fakeStorage();
+  const mem = createMemory(st, () => t);
+  assert.equal(mem.today('monk'), 0);
+  mem.recordMeeting('monk'); mem.recordMeeting('monk');
+  assert.equal(mem.today('monk'), 2);
+  assert.equal(mem.today('monk', at(2026, 10, 26)), 0);
+  assert.equal(createMemory(st, () => t).today('monk'), 2); // 저장·복원
+  t = at(2026, 10, 26);
+  assert.equal(mem.today('monk'), 0);
+  mem.recordMeeting('monk');
+  assert.equal(mem.today('monk'), 1);
+  assert.equal(mem.get('monk').meetings, 3);
+});
