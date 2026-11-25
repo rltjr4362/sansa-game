@@ -1,9 +1,11 @@
 import { Temple } from './world.js';
 
-const WALK_SPEED = 2.2;
+const walkSpeeds = { visitor: 2.2, monk: 2.2, dog: 2.6, white: 2.6, cat: 2.4 };
 const RUN_SCALE = 1.6;
 export const VIEW_SQUASH = .53;
-export const well = Temple.props.find(prop => prop.kind === 'well');
+const well = Temple.props.find(prop => prop.kind === 'well');
+const kitchen = Temple.halls.find(hall => hall.name === '공양간');
+const kitchenDoor = [Math.floor(kitchen.x + kitchen.w / 2), kitchen.y + kitchen.d];
 
 export function tileOf({ x, y }) {
   return [Math.floor(x), Math.floor(y)];
@@ -36,31 +38,50 @@ const directions = [
   ['a', 'ArrowLeft'], ['d', 'ArrowRight'], ['w', 'ArrowUp'], ['s', 'ArrowDown']
 ];
 
-export function movementForKeys(keys, angle, dt, run = false) {
+export function movementForKeys(keys, angle, dt, run = false, who = 'visitor') {
   const [left, right, up, down] = directions.map(pair => Number(pair.some(key => keys.has(key))));
   const x = right - left, y = (down - up) / VIEW_SQUASH;
   const length = Math.hypot(x, y);
   if (!length) return [0, 0];
-  const scale = WALK_SPEED * (run ? RUN_SCALE : 1) * dt / length, cos = Math.cos(angle), sin = Math.sin(angle);
+  const scale = walkSpeeds[who] * (run ? RUN_SCALE : 1) * dt / length, cos = Math.cos(angle), sin = Math.sin(angle);
   return [(x * cos + y * sin) * scale, (y * cos - x * sin) * scale];
 }
 
-export function findInteraction(visitor, monk) {
-  const tile = tileOf(visitor);
-  const atWell = Math.abs(tile[0] - well.x) + Math.abs(tile[1] - well.y) === 1;
-  const wellDistance = atWell ? Math.hypot(visitor.x - well.x - .5, visitor.y - well.y - .5) : Infinity;
-  const monkDistance = Math.hypot(visitor.x - monk.x, visitor.y - monk.y);
-  if (monkDistance <= 3 && monkDistance <= wellDistance) {
-    const path = Temple.route(...tile, ...tileOf(monk));
-    if (path && path.length <= 5) return 'monk';
+export function findInteraction(actor, sim, enabled) {
+  if (actor === sim) return null;
+  const [x, y] = tileOf(actor);
+  let nearest = null, bestDistance = Infinity;
+  function consider(target, position, range, steps) {
+    if (!position || position === actor) return;
+    const distance = Math.hypot(actor.x - position.x, actor.y - position.y);
+    if (distance > range || distance >= bestDistance) return;
+    if (steps !== undefined) {
+      const path = Temple.route(x, y, ...tileOf(position));
+      if (!path || path.length > steps) return;
+    }
+    nearest = { target, position };
+    bestDistance = distance;
   }
-  return atWell ? 'well' : null;
+  consider('monk', sim, 3, 5);
+  for (const key of ['dog', 'white', 'cat']) consider(key, sim.animals[key], 2, 4);
+
+  if (enabled?.has('well') && Math.abs(x - well.x) + Math.abs(y - well.y) === 1) {
+    consider('well', { x: well.x + .5, y: well.y + .5 }, Infinity);
+  }
+  if (enabled?.has('field')) {
+    const ripe = Temple.beds.some(({ access: [tx, ty] }, i) => x === tx && y === ty && sim.farm[i]?.stage === 'ripe');
+    if (ripe) consider('field', { x: x + .5, y: y + .5 }, Infinity);
+  }
+  if (enabled?.has('kitchen') && x === kitchenDoor[0] && y === kitchenDoor[1]) {
+    consider('kitchen', { x: x + .5, y: y + .5 }, Infinity);
+  }
+  return nearest;
 }
 
-export function bindPlayerInput({ enabled, onInteract, onPossess }) {
+export function bindPlayerInput({ enabled, journalEnabled = enabled, hasWorldFocus, onInteract, onPossess, onJournal }) {
   const keys = new Set();
   const moveKeys = new Set(directions.flat());
-  const keyFor = event => /^Key[WASDEQ]$/.test(event.code)
+  const keyFor = event => /^Key[WASDEQJ]$/.test(event.code)
     ? event.code.at(-1).toLowerCase()
     : event.code === 'Space' ? ' '
     : /^Shift(Left|Right)$/.test(event.code) ? event.code
@@ -68,24 +89,29 @@ export function bindPlayerInput({ enabled, onInteract, onPossess }) {
   const isRun = key => key === 'ShiftLeft' || key === 'ShiftRight';
 
   window.addEventListener('keydown', event => {
-    if (event.defaultPrevented || !enabled() || event.isComposing ||
-        event.altKey || event.ctrlKey || event.metaKey ||
-        event.target.closest?.('input, select, textarea, [contenteditable]')) return;
+    if (event.defaultPrevented || !hasWorldFocus(event.target) ||
+        event.isComposing || event.keyCode === 229 || event.altKey || event.ctrlKey || event.metaKey) return;
     const key = keyFor(event);
+    if (!(key === 'j' ? journalEnabled() : enabled())) return;
     if (isRun(key)) { keys.add(key); return; }
-    if (!moveKeys.has(key) && key !== 'e' && key !== ' ' && key !== 'q') return;
+    if (!moveKeys.has(key) && !['e', ' ', 'q', 'j'].includes(key)) return;
     event.preventDefault();
     if (moveKeys.has(key)) keys.add(key);
     else if (!event.repeat) {
-      if (key === 'e' || key === ' ') onInteract();
-      else onPossess();
+      if (key === 'e' || key === ' ') onInteract(key);
+      else if (key === 'q') onPossess();
+      else onJournal();
     }
   });
   window.addEventListener('keyup', event => keys.delete(keyFor(event)));
   window.addEventListener('blur', () => keys.clear());
+  window.addEventListener('focusin', () => keys.clear());
   document.addEventListener('visibilitychange', () => keys.clear());
   return {
     clear: () => keys.clear(),
-    move: (actor, angle, dt) => moveActor(actor, ...movementForKeys(keys, angle, dt, keys.has('ShiftLeft') || keys.has('ShiftRight')))
+    move: (actor, angle, dt, who) => {
+      const run = keys.has('ShiftLeft') || keys.has('ShiftRight');
+      moveActor(actor, ...movementForKeys(keys, angle, dt, run, who));
+    }
   };
 }

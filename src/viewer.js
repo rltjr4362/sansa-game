@@ -1,5 +1,8 @@
+import { characterNames as names, possessionOrder } from './control.js';
 import { Temple } from './world.js';
-import { well } from './player.js';
+
+const animalHeights={dog:.31,white:.31,cat:.25};
+const interactionHints={well:'물 긷기',field:'채소 거두기',kitchen:'채소 놓기',bell:'종 치기'};
 
 export function createViewer(land,Scene,sim,visitor,play){
   const app=land.closest('main');
@@ -12,6 +15,12 @@ export function createViewer(land,Scene,sim,visitor,play){
   const synth=window.speechSynthesis,target=el('monkTarget'),dogTarget=el('dogTarget');
   let selected=target,playing=true;
   const whiteTarget=el('whiteTarget'),catTarget=el('catTarget'),actors=[target,dogTarget,whiteTarget,catTarget],keys=['monk','dog','white','cat'];
+  const animalBubbles=new Map(Object.entries(animalHeights).map(([key,height])=>{
+    const node=document.createElement('div'),title=document.createElement('small'),line=document.createElement('span');
+    node.className='animalSpeech';node.hidden=true;title.textContent=names[key];
+    node.append(title,line);app.append(node);
+    return [sim.animals[key],{node,line,height}];
+  }));
   function localVoice(){
     voice=synth?.getVoices().find(v=>v.localService&&/^ko(?:[-_]|$)/i.test(v.lang));
     if(!voice)voiceOn=false;
@@ -55,9 +64,9 @@ export function createViewer(land,Scene,sim,visitor,play){
     label('clock',[Math.floor(time/60),time%60].map(n=>String(n).padStart(2,'0')).join(':'));
     label('weather',sim.weather);
     if(playing){
-      const possessed=play.actor()===sim;
-      label('place',possessed?'스님 조종 중':'방문객');
-      label('activity',possessed?'WASD 이동 · Shift 달리기 · Q 해제 · Tab 관찰':'WASD 이동 · Shift 달리기 · Space 상호작용 · Q 빙의 · Tab 관찰');
+      const who=play.possessing();
+      label('place',who==='visitor'?names[who]:names[who]+' 조종 중');
+      label('activity','WASD 이동 · Shift 달리기 · Space 상호작용 · Q '+names[nextActor(who)]+' · J 일지 · Tab 관찰');
     }else observationStatus(v);
     const passage=Temple.passage(sim),p=play.speech()||passage;
     el('chant').hidden=!p||(!subs&&p.title!=='스님');
@@ -65,6 +74,9 @@ export function createViewer(land,Scene,sim,visitor,play){
     const region=el('region').value,note=el('regionNote');note.hidden=playing||!districts[region];
     if(!note.hidden)label('regionNote',region==='farm'?sim.farm.map((bed,i)=>crops[i]+' · '+bedLabels[bed.stage]).join('　'):
       (['mainHall','mercy','mountain'].includes(region)?(sim.phase==='act'&&v[0]===districts[region].room?v[1]:'고요한 법당'):(sim.retreat.dirty?'퇴실 후 청소를 기다리는 중':stayLabels[sim.retreat.stage])));
+  }
+  function nextActor(who){
+    return possessionOrder[(possessionOrder.indexOf(who)+1)%possessionOrder.length];
   }
   function observationStatus(v){
     const passage=Temple.passage(sim);
@@ -156,7 +168,7 @@ export function createViewer(land,Scene,sim,visitor,play){
       if(subject)focus.point=subject;
       else{focus.key=null;customOption.text='자유 시점';el('region').value='custom';}
     }
-    const p=playing?Scene.position(play.actor(),.45):focus?.point||(district?Scene.position(district,0):monk);
+    const p=playing?Scene.position(play.actor(),animalHeights[play.possessing()]??.45):focus?.point||(district?Scene.position(district,0):monk);
     const at=playing?center():focus?.at||center();
     const z=cameraScale=playing?2.5:zoom,offset=(n,a)=>Math.min(0,Math.max(1-z,a-n*z));
     panX=offset(p.x,at.x);panY=offset(p.y,at.y);
@@ -256,23 +268,44 @@ export function createViewer(land,Scene,sim,visitor,play){
     gain.gain.setValueAtTime(.0001,now);gain.gain.exponentialRampToValueAtTime(volume+.0001,now+.015);gain.gain.exponentialRampToValueAtTime(.0001,now+duration);
     osc.connect(gain);gain.connect(ambientBus);osc.onended=()=>{osc.disconnect();gain.disconnect();};osc.start();osc.stop(now+duration);
   }
-  function speechPosition(){
-    const bubble=el('chant');if(bubble.hidden)return;
-    const point=screenPoint(Scene.position(sim,1.95));
+  function placeSpeech(bubble,actor,headHeight){
+    const point=screenPoint(Scene.position(actor,headHeight));
     const width=app.clientWidth,height=app.clientHeight,cx=point.x*width,head=point.y*height;
     if(cx<0||cx>width||head<2||head>height){bubble.hidden=true;return;}
     const left=Math.max(4,Math.min(width-bubble.offsetWidth-4,cx-12));
     bubble.style.left=left+'px';bubble.style.top=Math.max(bubble.offsetHeight+5,head)+'px';
     bubble.style.setProperty('--tip',Math.max(5,Math.min(bubble.offsetWidth-12,cx-left))+'px');
   }
+  function speechPosition(){
+    const chant=el('chant');
+    if(!chant.hidden)placeSpeech(chant,sim,1.95);
+    for(const {node} of animalBubbles.values())node.hidden=true;
+    for(const {actor,line} of play.animalSpeech()){
+      const bubble=animalBubbles.get(actor);
+      if(bubble.line.textContent!==line)bubble.line.textContent=line;
+      bubble.node.hidden=false;
+      placeSpeech(bubble.node,actor,bubble.height+.65);
+    }
+  }
   function interactionPosition(){
-    const marker=el('interaction'),who=playing&&!paused&&!play.dialogueOpen()?play.target():null;
-    marker.hidden=!who;
-    if(!who)return;
-    const point=screenPoint(Scene.position(who==='monk'?sim:{x:well.x+.5,y:well.y+.5},who==='monk'?1.65:.95));
+    const marker=el('interaction'),hit=playing&&!paused&&!play.modalOpen()?play.target():null;
+    marker.hidden=!hit;
+    if(!hit)return;
+    const {target,position}=hit;
+    const height=target==='monk'?1.65:target==='bell'?2.1:(animalHeights[target]??.35)+.60;
+    const point=screenPoint(Scene.position(position,height));
     marker.hidden=point.x<0||point.x>1||point.y<0||point.y>1;
-    label('interaction',who==='monk'?'Space 말걸기':'Space 물 긷기');
+    label('interaction','Space '+(interactionHints[target]||names[target]+'에게 말 걸기'));
     marker.style.left=point.x*100+'%';marker.style.top=point.y*100+'%';
+  }
+  function monkDirection(){
+    const marker=el('monkDirection'),point=screenPoint(Scene.position(sim));
+    marker.hidden=play.possessing()==='monk'||(point.x>=0&&point.x<=1&&point.y>=0&&point.y<=1);
+    if(marker.hidden)return;
+    const w=app.clientWidth,h=app.clientHeight,dx=(point.x-.5)*w,dy=(point.y-.5)*h;
+    const factor=Math.min(Math.max(w/2-38,1)/Math.abs(dx),Math.max(h/2-64,1)/Math.abs(dy));
+    marker.style.left=(w/2+factor*dx)+'px';marker.style.top=(h/2+factor*dy)+'px';
+    el('monkArrow').style.transform='rotate('+(Math.atan2(dy,dx)+Math.PI/2)+'rad)';
   }
   const center=()=>({x:.5,y:.5});
   let lastTap=null;
@@ -348,8 +381,12 @@ export function createViewer(land,Scene,sim,visitor,play){
       el(['greet','sniff','rollCone','sitCat'][actors.indexOf(selected)]).focus({preventScroll:true});needsPaint=true;
     }
   }
+  function busy(node){
+    const key=keys[actors.indexOf(node)];
+    return key===play.possessing()||play.animalPaused(key)||
+      (node===target&&sim.encounter)||(node===dogTarget&&sim.animals.dog.visitor);
+  }
   for(const [node,shortcut] of [[target,'talk'],[dogTarget,'visitDog'],[whiteTarget,'visitWhite'],[catTarget,'visitCat']]){
-    const busy=()=>node===target?sim.encounter||play.actor()===sim:node===dogTarget&&sim.animals.dog.visitor;
     node.onclick=event=>{
       if(playing||performance.now()<ignoreTapUntil)return;
       let who=node;
@@ -362,13 +399,13 @@ export function createViewer(land,Scene,sim,visitor,play){
           if(distance<closest){who=actor;closest=distance;}
         }
       }
-      if(!(who===target?sim.encounter||play.actor()===sim:who===dogTarget&&sim.animals.dog.visitor))meet(el('meet').hidden||selected!==who,who);
+      if(!busy(who))meet(el('meet').hidden||selected!==who,who);
     };
-    el(shortcut).onclick=()=>{if(!busy())meet(true,node);};
+    el(shortcut).onclick=()=>{if(!busy(node))meet(true,node);};
   }
   el('dismiss').onclick=()=>{meet(false);selected.focus({preventScroll:true});};
   for(const id of ['greet','recite','sniff','pet','rollCone','sitCat'])el(id).onclick=()=>{
-    if(playing||(selected===target&&play.actor()===sim))return;
+    if(playing||busy(selected))return;
     if(selected===whiteTarget||selected===catTarget)sim.animals.visit(id);else if(selected===dogTarget)sim.touchDog(id,Math.PI/2-angle);else sim.interact(id,Math.PI/2-angle);
     meet(false);selected.focus({preventScroll:true});status();needsPaint=true;
   };
@@ -378,7 +415,7 @@ export function createViewer(land,Scene,sim,visitor,play){
     if(!e.target.closest('#meet,.resident,#talk,#visitDog'))meet(false);
   });
   function toggleMode(){
-    if(play.dialogueOpen())return;
+    if(play.modalOpen())return;
     playing=!playing;
     app.dataset.mode=playing?'play':'observe';
     label('mode',playing?'관찰 모드 · Tab':'플레이 모드 · Tab');
@@ -395,9 +432,9 @@ export function createViewer(land,Scene,sim,visitor,play){
   }
   el('mode').onclick=toggleMode;
   window.addEventListener('keydown',e=>{
-    if(e.defaultPrevented||play.dialogueOpen())return;
+    if(e.defaultPrevented||e.isComposing||e.keyCode===229||play.modalOpen())return;
     if(e.key==='Tab'&&!e.shiftKey&&!e.altKey&&!e.ctrlKey&&!e.metaKey&&
-        (e.target===document.body||e.target===app||e.target===land)){
+        play.hasWorldFocus(e.target)){
       e.preventDefault();
       if(!e.repeat)toggleMode();
     }else if(e.key==='Escape'&&!el('meet').hidden){meet(false);selected.focus({preventScroll:true});}
@@ -427,8 +464,9 @@ export function createViewer(land,Scene,sim,visitor,play){
       if(!playing&&idle>9&&el('settings').hidden&&el('meet').hidden&&!app.querySelector(':focus-visible'))app.classList.add('quiet');
       if(needsPaint||moving||zooming||(!paused&&ts-lastPaint>=1000/30-1)){
         const room=playing?null:districts[el('region').value]?.room||heldRoom;
-        Scene.render(sim,angle,cameraAge>=2.6,{visitor,protagonist:playing?play.actor():null,observed:observedActor(),room});
-        frameSubjects();status();speechPosition();interactionPosition();landscapeAudio();ambientTick();
+        Scene.render(sim,angle,cameraAge>=2.6,{visitor,protagonist:playing?play.actor():null,observed:observedActor(),room,
+          animalEmote:play.animalEmote,easterFigures:play.easterFigures()});
+        frameSubjects();status();speechPosition();interactionPosition();monkDirection();landscapeAudio();ambientTick();
         lastPaint=ts;needsPaint=false;
       }
     }

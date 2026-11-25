@@ -24,7 +24,7 @@ test('빙의 중에도 동물과 시계가 움직이고, 해제하면 스님이 
   assert.deepEqual(moved, { dog: true, white: true, cat: true });
   assert.ok(sim.clock > before.clock);
 
-  control.togglePossession();
+  assert.equal(control.togglePossession(), 'dog');
   const start = [sim.x, sim.y];
   let walked = false;
   for (let i = 0; i < 20 * 30 && !walked; i++) {
