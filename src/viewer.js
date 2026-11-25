@@ -3,6 +3,7 @@ import { Temple } from './world.js';
 
 const animalHeights={dog:.31,white:.31,cat:.25};
 const interactionHints={well:'물 긷기',field:'채소 거두기',kitchen:'채소 놓기',bell:'종 치기'};
+const playZoom=2.5;
 
 export function createViewer(land,Scene,sim,visitor,play){
   const app=land.closest('main');
@@ -11,7 +12,7 @@ export function createViewer(land,Scene,sim,visitor,play){
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
   let paused=false,auto=!reduced,subs=true,speed=1,view=0,angle=Math.PI/4,start=angle,end=angle;
   let cameraAge=2.6,autoAge=0,idle=0,prevTime=null,lastPaint=-100,needsPaint=true;
-  let zoom=1,targetZoom=1,voiceOn=false,voice=null,spoken='';
+  let zoom=playZoom,targetZoom=1,voiceOn=false,voice=null,spoken='';
   const synth=window.speechSynthesis,target=el('monkTarget'),dogTarget=el('dogTarget');
   let selected=target,playing=true;
   const whiteTarget=el('whiteTarget'),catTarget=el('catTarget'),actors=[target,dogTarget,whiteTarget,catTarget],keys=['monk','dog','white','cat'];
@@ -170,7 +171,7 @@ export function createViewer(land,Scene,sim,visitor,play){
     }
     const p=playing?Scene.position(play.actor(),animalHeights[play.possessing()]??.45):focus?.point||(district?Scene.position(district,0):monk);
     const at=playing?center():focus?.at||center();
-    const z=cameraScale=playing?2.5:zoom,offset=(n,a)=>Math.min(0,Math.max(1-z,a-n*z));
+    const z=cameraScale=zoom,offset=(n,a)=>Math.min(0,Math.max(1-z,a-n*z));
     panX=offset(p.x,at.x);panY=offset(p.y,at.y);
     land.style.transform=z===1?'none':'translate('+panX*100+'%,'+panY*100+'%) scale('+z+')';
     if(playing)return;
@@ -414,10 +415,10 @@ export function createViewer(land,Scene,sim,visitor,play){
     if(!e.target.closest('.dock'))menu(false);
     if(!e.target.closest('#meet,.resident,#talk,#visitDog'))meet(false);
   });
-  function toggleMode(){
-    if(play.modalOpen())return;
-    playing=!playing;
-    app.dataset.mode=playing?'play':'observe';
+  function setMode(mode){
+    const leavingTitle=app.dataset.mode==='title';
+    playing=mode==='play';
+    app.dataset.mode=mode;
     label('mode',playing?'관찰 모드 · Tab':'플레이 모드 · Tab');
     play.clearInput();
     meet(false);menu(false);
@@ -425,10 +426,16 @@ export function createViewer(land,Scene,sim,visitor,play){
     if(playing){
       // Freeze the actual angle even if an observation turn is in progress.
       start=end=angle;cameraAge=2.6;
+      if(!leavingTitle||reduced)zoom=playZoom;
     }else{
       zoom=1;setZoom(1);autoAge=0;
+      if(mode==='title'&&!reduced)rotate(1,false);
     }
-    app.focus({preventScroll:true});wake();needsPaint=true;
+    if(mode!=='title')app.focus({preventScroll:true});
+    wake();needsPaint=true;
+  }
+  function toggleMode(){
+    if(!play.modalOpen())setMode(playing?'observe':'play');
   }
   el('mode').onclick=toggleMode;
   window.addEventListener('keydown',e=>{
@@ -448,17 +455,22 @@ export function createViewer(land,Scene,sim,visitor,play){
   function frame(ts){
     const dt=prevTime===null?0:Math.min(.20,Math.max(0,(ts-prevTime)/1000));prevTime=ts;
     if(!document.hidden){
+      const title=app.dataset.mode==='title';
       if(!paused){
         let left=dt*speed;
         while(left>1e-8){const step=Math.min(left,1/30);play.step(step,angle,playing);left-=step;}
         if(dt>0)play.frame(dt*speed);
-        if(!sim.encounter&&!sim.meeting&&!sim.animals.dog.visitor&&!sim.animals.group.pair&&!['listen','blink','nuzzle'].includes(sim.animals.cat.pose)&&el('meet').hidden)autoAge+=dt;
-        if(!playing&&auto&&targetZoom===1&&autoAge>=48)rotate(1,false);
+        const quietScene=!sim.encounter&&!sim.meeting&&!sim.animals.dog.visitor&&!sim.animals.group.pair&&
+          !['listen','blink','nuzzle'].includes(sim.animals.cat.pose)&&el('meet').hidden;
+        if(title||quietScene)autoAge+=dt;
+        const autoTurn=title?!reduced:auto;
+        if(!playing&&autoTurn&&targetZoom===1&&autoAge>=(title?8:48))rotate(1,false);
       }
       const moving=cameraAge<2.6;
-      const zooming=zoom!==targetZoom;
-      zoom+=(targetZoom-zoom)*(reduced?1:1-Math.exp(-dt*13));
-      if(Math.abs(targetZoom-zoom)<.001)zoom=targetZoom;
+      const lens=playing?playZoom:targetZoom;
+      const zooming=zoom!==lens;
+      zoom+=(lens-zoom)*(reduced?1:1-Math.exp(-dt*13));
+      if(Math.abs(lens-zoom)<.001)zoom=lens;
       cameraAge=Math.min(2.6,cameraAge+dt);angle=start+(end-start)*Temple.smooth(cameraAge/2.6);
       idle+=dt;
       if(!playing&&idle>9&&el('settings').hidden&&el('meet').hidden&&!app.querySelector(':focus-visible'))app.classList.add('quiet');
@@ -475,6 +487,7 @@ export function createViewer(land,Scene,sim,visitor,play){
   setZoom(1);localVoice();status();requestAnimationFrame(frame);
   return {
     inputEnabled:()=>playing&&!paused,
+    setTitleMode:on=>setMode(on?'title':'play'),
     refresh:()=>{needsPaint=true;}
   };
 }

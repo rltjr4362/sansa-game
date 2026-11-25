@@ -4,6 +4,7 @@ import { bellPosition, createBellEffect, createEaster, nearBell } from './easter
 import { createJournalView } from './journal-view.js';
 import { bindPlayerInput, findInteraction, tileOf } from './player.js';
 import { createScene } from './render.js';
+import { createTitleView } from './title-view.js';
 import { createViewer } from './viewer.js';
 import { Temple } from './world.js';
 
@@ -16,6 +17,7 @@ export function startPlay(canvas) {
   const interactions = new Set(), possessions = new Set(), ticks = new Set();
   const enabledTargets = new Set();
   let journalEntries = () => [];
+  let title = null;
 
   const refreshInput = () => {
     input.clear();
@@ -23,14 +25,15 @@ export function startPlay(canvas) {
   };
   const dialogue = createDialogueView(app.querySelector('#dialogue'), refreshInput);
   const journal = createJournalView(app.querySelector('#journal'), refreshInput);
-  const modalOpen = () => dialogue.isOpen() || journal.isOpen();
+  const titleRoot = app.querySelector('#titleScreen');
+  const modalOpen = () => titleRoot.open || dialogue.isOpen() || journal.isOpen();
   const hasWorldFocus = target => target === app || target === canvas || target === document.body;
   // 마우스로 누른 버튼(도장, 설정 등)이 포커스를 쥐고 있으면 게임 키가 죽는다.
-  // 클릭 처리가 끝난 뒤 포커스를 장면으로 돌린다. 대화창·일지·모델 메뉴는 포커스가 필요해 제외.
+  // 클릭 처리가 끝난 뒤 포커스를 장면으로 돌린다. 모달과 메뉴는 자체 포커스를 유지한다.
   document.addEventListener('click', event => {
     if (!event.detail || !(event.target instanceof Element)) return;
     const button = event.target.closest('button');
-    if (!button || button.closest('#dialogue, #journal, .model-picker, #settings')) return;
+    if (!button || button.closest('#dialogue, #journal, #titleScreen, .model-picker, #settings')) return;
     setTimeout(() => { if (document.activeElement === button) app.focus({ preventScroll: true }); });
   });
   const easter = createEaster(() => {
@@ -116,6 +119,15 @@ export function startPlay(canvas) {
     onPossessChange: cb => { possessions.add(cb); },
     onTick: cb => { ticks.add(cb); },
     onJournal: cb => { journalEntries = cb; },
+    showTitle(choices, onStart) {
+      if (title) return title;
+      viewer.setTitleMode(true);
+      title = createTitleView(titleRoot, choices, onStart, () => {
+        title = null;
+        viewer.setTitleMode(false);
+      });
+      return title;
+    },
     setHud(text) {
       const hud = app.querySelector('#hud');
       hud.textContent = text;
