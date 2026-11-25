@@ -1,25 +1,42 @@
 // 스냅샷+입력 → 메시지, 스트리밍 중 대사 추출, ask().
-import { PERSONA, SYSTEM_RULES } from './lines.js';
+import { PERSONA, SYSTEM_RULES, ANIMALS, ANIMAL_RULES, ERRANDS, NPC_NAMES } from './lines.js';
 
 const BAND = { new: '처음 봄', familiar: '낯익음', close: '친함' };
-const ERRAND_STATE = { offered: '제안함', accepted: '수락함', carrying: '물을 들고 옴' };
+const ERRAND_STATE = { offered: '제안함', accepted: '수락함' };
+// 말을 건 쪽 + 주격 조사
+const SUBJECT = { visitor: '방문객이', monk: '스님이', dog: '황구가', white: '백구가', cat: '고양이가' };
+const isAnimal = who => Object.hasOwn(ANIMALS, who);
 const pad = n => String(n).padStart(2, '0');
+
+function errandPart(errand) {
+  const e = ERRANDS[errand.id] ?? ERRANDS.water;
+  const state = errand.state === 'carrying' ? e.carryingLabel : (ERRAND_STATE[errand.state] ?? errand.state);
+  return `부탁: ${e.label}(${state}).`;
+}
 
 function situation(s) {
   const clock = `${pad(Math.floor(s.clock / 60))}:${pad(s.clock % 60)}`;
-  const parts = [
-    `상황: ${clock}, ${s.weather}.`,
-    `스님은 ${s.place ?? '어딘가'}에서 ${s.activity}.`,
-    `방문객과 ${s.meetings}번째 만남(${BAND[s.affinityBand] ?? s.affinityBand}).`
-  ];
-  if (s.errand) parts.push(`부탁: 물 길어 오기(${ERRAND_STATE[s.errand.state] ?? s.errand.state}).`);
+  const head = `상황: ${clock}, ${s.weather}.`;
+  const band = BAND[s.affinityBand] ?? s.affinityBand;
+  const partner = SUBJECT[s.partner];
+  if (isAnimal(s.npc)) {
+    const name = NPC_NAMES[s.npc];
+    return [head, `${partner ?? SUBJECT.visitor} ${name}에게 다가왔다.`, `${name}와 ${s.meetings}번째 만남(${band}).`].join(' ');
+  }
+  if (isAnimal(s.partner)) {
+    return [head, `스님은 ${s.place ?? '어딘가'}에서 ${s.activity}.`, `${partner} 스님에게 다가왔다.`].join(' ');
+  }
+  const parts = [head, `스님은 ${s.place ?? '어딘가'}에서 ${s.activity}.`, `방문객과 ${s.meetings}번째 만남(${band}).`];
+  if (s.errand) parts.push(errandPart(s.errand));
   if (s.following) parts.push('스님은 방문객을 따라가는 중.');
   return parts.join(' ');
 }
 
+const rules = npc => isAnimal(npc) ? [ANIMALS[npc].persona, ANIMAL_RULES] : [PERSONA, SYSTEM_RULES];
+
 export function buildMessages(snapshot, userText) {
   return [
-    { role: 'system', content: [PERSONA, SYSTEM_RULES, situation(snapshot)].join('\n') },
+    { role: 'system', content: [...rules(snapshot.npc), situation(snapshot)].join('\n') },
     ...snapshot.history,
     { role: 'user', content: userText }
   ];
