@@ -42,3 +42,30 @@ test('마지막 user 메시지만 본다', async () => {
   ] });
   assert.equal(parseReply(raw).action, 'none');
 });
+
+test('장소 질문·이동 거절은 go_to가 아니다', async () => {
+  const llm = createMockLLM();
+  for (const text of ['우물물이 시원한가요?', '우물에는 가지 말아요', '연못 말고 다른 데 얘기해요', '대웅전엔 안 가요', '산문 쪽은 싫어요']) {
+    const reply = parseReply(await ask(llm, text));
+    assert.notEqual(reply.action, 'go_to', text);
+  }
+});
+
+test('장소 + 긍정 이동 요청은 go_to', async () => {
+  const llm = createMockLLM();
+  for (const [text, place] of [['우물로 가자', '우물'], ['대웅전 안내해 주세요', '대웅전'], ['앞마당 가요', '앞마당']]) {
+    const reply = parseReply(await ask(llm, text));
+    assert.equal(reply.action, 'go_to', text);
+    assert.equal(reply.place, place, text);
+  }
+});
+
+test('PROMPTS 20/20', async () => {
+  const llm = createMockLLM();
+  let ok = 0;
+  for (const p of PROMPTS) {
+    const reply = parseReply(await ask(llm, p.text));
+    if (reply.action === p.expect && (p.expect !== 'go_to' || reply.place === p.place)) ok++;
+  }
+  assert.equal(ok, PROMPTS.length);
+});
