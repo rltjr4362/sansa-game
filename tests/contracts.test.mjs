@@ -66,3 +66,79 @@ test('호감도 구간', () => {
   assert.equal(affinityBand(14), 'familiar');
   assert.equal(affinityBand(15), 'close');
 });
+
+test('앞의 빈 think 블록을 벗기고 읽는다 (Qwen3.5 실측)', () => {
+  const raw = '<think>\n\n</think>\n\n{\n  "say": "맑은 날이에요.",\n  "action": "follow",\n  "place": "없음",\n  "options": ["a","b","c"]\n}';
+  assert.deepEqual(parseReply(raw), { say: '맑은 날이에요.', action: 'follow', place: null, options: ['a', 'b', 'c'] });
+});
+
+test('think 블록 안에 내용이 있어도 하나만 벗긴다', () => {
+  const json = '{"say":"네","action":"none","place":"없음","options":[]}';
+  assert.equal(parseReply(`  <think>생각 {중}</think>  ${json}`).say, '네');
+  assert.equal(parseReply(`<think>a</think><think>b</think>${json}`), null);
+});
+
+test('산문이나 코드펜스가 감싸면 null', () => {
+  const json = '{"say":"네","action":"follow","place":"없음","options":[]}';
+  assert.equal(parseReply('답: ' + json), null);
+  assert.equal(parseReply('```json\n' + json + '\n```'), null);
+  assert.equal(parseReply('<think></think>\n```json\n' + json + '\n```'), null);
+});
+
+test('문자열이 아닌 입력, 객체가 아닌 JSON은 null', () => {
+  assert.equal(parseReply(['{"say":"네","action":"follow"}']), null);
+  assert.equal(parseReply(undefined), null);
+  assert.equal(parseReply(null), null);
+  assert.equal(parseReply({ say: '네' }), null);
+  assert.equal(parseReply('[{"say":"네","action":"follow"}]'), null);
+  assert.equal(parseReply('"문자열"'), null);
+  assert.equal(parseReply('42'), null);
+});
+
+test('place가 이상한 타입이어도 던지지 않고 none으로 강등하며 대사는 살린다', () => {
+  for (const place of ['{"toString":null}', '["연못가"]', '123', 'null']) {
+    let r;
+    assert.doesNotThrow(() => { r = parseReply(`{"say":"네","action":"go_to","place":${place},"options":[]}`); }, place);
+    assert.equal(r.action, 'none', place);
+    assert.equal(r.place, null, place);
+    assert.equal(r.say, '네', place);
+  }
+});
+
+test('say가 없거나 문자열이 아니면 null', () => {
+  assert.equal(parseReply('{"action":"follow","place":"없음","options":["a","b","c"]}'), null);
+  assert.equal(parseReply('{"say":5,"action":"follow","place":"없음","options":["a","b","c"]}'), null);
+  assert.equal(parseReply('{"say":null,"action":"follow","place":"없음","options":[]}'), null);
+});
+
+test('보이지 않는 글자뿐인 추천은 비어 있는 것으로 보고 options는 null', () => {
+  const r = parseReply(JSON.stringify({ say: '네', action: 'none', place: '없음', options: ['하나', '​', '셋'] }));
+  assert.equal(r.options, null);
+  for (const z of ['​', '‌', '‍', '⁠', '﻿', ' ​﻿ ']) {
+    const q = parseReply(JSON.stringify({ say: '네', action: 'none', place: '없음', options: ['a', z, 'c'] }));
+    assert.equal(q.options, null);
+  }
+});
+
+test('자르기는 보이는 글자(grapheme) 단위다', () => {
+  const opt = '가'.repeat(19) + '🙂' + '나';
+  const r = parseReply(JSON.stringify({ say: '네', action: 'none', place: '없음', options: [opt, 'b', 'c'] }));
+  assert.equal(r.options[0], '가'.repeat(19) + '🙂');
+  const s = parseReply(JSON.stringify({ say: '가'.repeat(59) + '👨‍👩‍👧' + '나', action: 'none', place: '없음', options: [] }));
+  assert.equal(s.say, '가'.repeat(59) + '👨‍👩‍👧');
+});
+
+test('PLACES는 world.js의 실제 방문지·밭·우물과 맞는다', () => {
+  const same = (a, b) => a[0] === b[0] && a[1] === b[1];
+  for (const name of ['대웅전', '연못가', '산문', '앞마당']) {
+    const tiles = Temple.visits.filter(v => v[0] === name).flatMap(v => v[3]);
+    assert.ok(tiles.some(t => same(t, PLACES[name])), name);
+  }
+  assert.ok(Temple.beds.some(b => same(b.access, PLACES['들밭'])), '들밭');
+  const well = Temple.props.find(p => p.kind === 'well');
+  const [wx, wy] = PLACES['우물'];
+  assert.equal(Math.abs(well.x - wx) + Math.abs(well.y - wy), 1, '우물');
+  for (const [name, [x, y]] of Object.entries(PLACES)) {
+    assert.notEqual(Temple.route(11, 19, x, y), null, name);
+  }
+});
