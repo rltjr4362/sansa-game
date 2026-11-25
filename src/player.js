@@ -1,6 +1,7 @@
 import { Temple } from './world.js';
 
-const WALK_SPEED = 1.1;
+const WALK_SPEED = 2.2;
+const RUN_SCALE = 1.6;
 export const VIEW_SQUASH = .53;
 export const well = Temple.props.find(prop => prop.kind === 'well');
 
@@ -35,12 +36,12 @@ const directions = [
   ['a', 'ArrowLeft'], ['d', 'ArrowRight'], ['w', 'ArrowUp'], ['s', 'ArrowDown']
 ];
 
-export function movementForKeys(keys, angle, dt) {
+export function movementForKeys(keys, angle, dt, run = false) {
   const [left, right, up, down] = directions.map(pair => Number(pair.some(key => keys.has(key))));
   const x = right - left, y = (down - up) / VIEW_SQUASH;
   const length = Math.hypot(x, y);
   if (!length) return [0, 0];
-  const scale = WALK_SPEED * dt / length, cos = Math.cos(angle), sin = Math.sin(angle);
+  const scale = WALK_SPEED * (run ? RUN_SCALE : 1) * dt / length, cos = Math.cos(angle), sin = Math.sin(angle);
   return [(x * cos + y * sin) * scale, (y * cos - x * sin) * scale];
 }
 
@@ -49,9 +50,9 @@ export function findInteraction(visitor, monk) {
   const atWell = Math.abs(tile[0] - well.x) + Math.abs(tile[1] - well.y) === 1;
   const wellDistance = atWell ? Math.hypot(visitor.x - well.x - .5, visitor.y - well.y - .5) : Infinity;
   const monkDistance = Math.hypot(visitor.x - monk.x, visitor.y - monk.y);
-  if (monkDistance <= 2 && monkDistance <= wellDistance) {
+  if (monkDistance <= 3 && monkDistance <= wellDistance) {
     const path = Temple.route(...tile, ...tileOf(monk));
-    if (path && path.length <= 4) return 'monk';
+    if (path && path.length <= 5) return 'monk';
   }
   return atWell ? 'well' : null;
 }
@@ -61,18 +62,22 @@ export function bindPlayerInput({ enabled, onInteract, onPossess }) {
   const moveKeys = new Set(directions.flat());
   const keyFor = event => /^Key[WASDEQ]$/.test(event.code)
     ? event.code.at(-1).toLowerCase()
+    : event.code === 'Space' ? ' '
+    : /^Shift(Left|Right)$/.test(event.code) ? event.code
     : event.key.length === 1 ? event.key.toLowerCase() : event.key;
+  const isRun = key => key === 'ShiftLeft' || key === 'ShiftRight';
 
   window.addEventListener('keydown', event => {
     if (event.defaultPrevented || !enabled() || event.isComposing ||
         event.altKey || event.ctrlKey || event.metaKey ||
         event.target.closest?.('input, select, textarea, [contenteditable]')) return;
     const key = keyFor(event);
-    if (!moveKeys.has(key) && key !== 'e' && key !== 'q') return;
+    if (isRun(key)) { keys.add(key); return; }
+    if (!moveKeys.has(key) && key !== 'e' && key !== ' ' && key !== 'q') return;
     event.preventDefault();
     if (moveKeys.has(key)) keys.add(key);
     else if (!event.repeat) {
-      if (key === 'e') onInteract();
+      if (key === 'e' || key === ' ') onInteract();
       else onPossess();
     }
   });
@@ -81,6 +86,6 @@ export function bindPlayerInput({ enabled, onInteract, onPossess }) {
   document.addEventListener('visibilitychange', () => keys.clear());
   return {
     clear: () => keys.clear(),
-    move: (actor, angle, dt) => moveActor(actor, ...movementForKeys(keys, angle, dt))
+    move: (actor, angle, dt) => moveActor(actor, ...movementForKeys(keys, angle, dt, keys.has('ShiftLeft') || keys.has('ShiftRight')))
   };
 }

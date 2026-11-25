@@ -38,7 +38,17 @@ test('벽을 향하는 축이 막혀도 다른 축으로 벽을 따라 움직인
 test('화면 오른쪽 입력을 카메라 각도의 역변환으로 이동한다', () => {
   const [dx, dy] = movementForKeys(new Set(['d', 'ArrowRight']), Math.PI / 2, 1);
   assert.ok(Math.abs(dx) < 1e-12);
-  assert.ok(Math.abs(dy + 1.1) < 1e-12);
+  assert.ok(Math.abs(dy + 2.2) < 1e-12);
+});
+
+test('Shift를 누르면 달리기 배율 1.6이 곱해진다', () => {
+  const [, dy] = movementForKeys(new Set(['d']), Math.PI / 2, 1, true);
+  assert.ok(Math.abs(dy + 2.2 * 1.6) < 1e-12);
+});
+
+test('스님과 거리 3·경로 5까지 말을 걸 수 있다', () => {
+  assert.equal(findInteraction(actorAt(10.5, 10.5), actorAt(10.5, 7.5)), 'monk');
+  assert.equal(findInteraction(actorAt(10.5, 11.5), actorAt(10.5, 7.5)), null);
 });
 
 test('거리 2타일 이내여도 벽으로 우회 경로가 긴 스님은 제외한다', () => {

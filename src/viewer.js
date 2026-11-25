@@ -57,7 +57,7 @@ export function createViewer(land,Scene,sim,visitor,play){
     if(playing){
       const possessed=play.actor()===sim;
       label('place',possessed?'스님 조종 중':'방문객');
-      label('activity',possessed?'WASD / 방향키 이동 · Q 해제':'WASD / 방향키 이동 · Q 빙의');
+      label('activity',possessed?'WASD 이동 · Shift 달리기 · Q 해제 · Tab 관찰':'WASD 이동 · Shift 달리기 · Space 상호작용 · Q 빙의 · Tab 관찰');
     }else observationStatus(v);
     const passage=Temple.passage(sim),p=play.speech()||passage;
     el('chant').hidden=!p||(!subs&&p.title!=='스님');
@@ -271,7 +271,7 @@ export function createViewer(land,Scene,sim,visitor,play){
     if(!who)return;
     const point=screenPoint(Scene.position(who==='monk'?sim:{x:well.x+.5,y:well.y+.5},who==='monk'?1.65:.95));
     marker.hidden=point.x<0||point.x>1||point.y<0||point.y>1;
-    label('interaction',who==='monk'?'E 말걸기':'E 물 긷기');
+    label('interaction',who==='monk'?'Space 말걸기':'Space 물 긷기');
     marker.style.left=point.x*100+'%';marker.style.top=point.y*100+'%';
   }
   const center=()=>({x:.5,y:.5});
