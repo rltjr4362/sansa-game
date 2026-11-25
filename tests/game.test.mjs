@@ -5,96 +5,15 @@ import { createMemory } from '../src/memory.js';
 import { createErrands } from '../src/errands.js';
 import { MONK_NAME, ERRAND, MOCK, greetingFor, openingFor, templateOptions } from '../src/lines.js';
 
-const flush = () => new Promise(r => setImmediate(r));
-
-function fakeStorage() {
-  const m = new Map();
-  return { getItem: k => m.has(k) ? m.get(k) : null, setItem: (k, v) => m.set(k, String(v)) };
-}
-
-function fakeMonk() {
-  const m = {
-    tileAt: [10, 12], isBusy: false, isPossessed: false, following: false,
-    calls: { follow: [], stopFollow: 0, goTo: [], say: [], hold: [] },
-    possessed: () => m.isPossessed,
-    busy: () => m.isBusy,
-    tile: () => m.tileAt,
-    snapshotBase: () => ({ clock: 720, weather: '맑음', place: '앞마당', activity: '낙엽 쓸기', following: m.following }),
-    follow(s) { m.calls.follow.push(s); if (m.isPossessed) return false; m.following = true; return true; },
-    stopFollow() { m.calls.stopFollow++; m.following = false; },
-    goTo(p) { m.calls.goTo.push(p); return true; },
-    hold(s) { m.calls.hold.push(s); },
-    say(text, s) { m.calls.say.push(text); }
-  };
-  return m;
-}
-
-function fakeDialogue() {
-  const cb = {};
-  const d = {
-    log: [], opened: false, npcText: null, options: null, choices: null, thinking: false, status: null,
-    open(title) { d.log.push(['open', title]); d.opened = true; },
-    isOpen: () => d.opened,
-    setNpcText(t) { d.log.push(['npc', t]); d.npcText = t; },
-    setThinking(on) { d.log.push(['thinking', on]); d.thinking = on; },
-    setOptions(o) { d.log.push(['options', o]); d.options = o; },
-    setChoices(c) { d.log.push(['choices', c]); d.choices = c; },
-    setStatus(t) { d.log.push(['status', t]); d.status = t; },
-    onSubmit: f => { cb.submit = f; },
-    onChoice: f => { cb.choice = f; },
-    onClose: f => { cb.close = f; },
-    close() { d.log.push(['close']); d.opened = false; cb.close?.(); },
-    submit: text => cb.submit(text),
-    choose: id => cb.choice(id)
-  };
-  return d;
-}
-
-function fakePlay() {
-  const cb = {};
-  const monk = fakeMonk();
-  const dialogue = fakeDialogue();
-  const p = {
-    monk, dialogue, tileAt: [10, 13], who: 'visitor', hud: [], button: { texts: [], hidden: false },
-    playerTile: () => p.tileAt,
-    possessing: () => p.who,
-    onInteract: f => { cb.interact = f; },
-    onPossessChange: f => { cb.possess = f; },
-    onTick: f => { cb.tick = f; },
-    setHud: t => p.hud.push(t),
-    modelButton(onClick) {
-      cb.button = onClick;
-      return { setText: t => p.button.texts.push(t), hide: () => { p.button.hidden = true; } };
-    },
-    fire: {
-      interact: t => cb.interact(t),
-      tick: dt => cb.tick(dt),
-      possess: who => { p.who = who; cb.possess(who); },
-      button: () => cb.button()
-    }
-  };
-  return p;
-}
+import { flush, fakeStorage, fakePlay, manualRouter, replyOf } from './helpers/fake-play.mjs';
 
 function setup(deps = {}) {
-  const play = fakePlay();
+  const play = fakePlay({ legacy: true }); // 1단계 Play. 새 Play는 game2.test.mjs
   const memory = deps.memory ?? createMemory(fakeStorage(), () => new Date(2026, 10, 25, 12).getTime());
   const errands = deps.errands ?? createErrands(memory);
   const game = createGame(play, { memory, errands, ...deps });
   return { play, memory, errands, game, d: play.dialogue, monk: play.monk };
 }
-
-// 수동으로 응답을 내보내는 라우터. chat 호출마다 {args, resolve, reject}가 쌓인다.
-function manualRouter() {
-  const calls = [];
-  return {
-    calls,
-    active: () => 'mock',
-    chat: args => new Promise((resolve, reject) => calls.push({ args, resolve, reject }))
-  };
-}
-const replyOf = (say, action = 'none') =>
-  ({ raw: '', reply: { say, action, place: null, options: ['가', '나', '다'] }, source: 'mock' });
 
 // ── 선제 인사 ──────────────────────────────────────────────
 
@@ -437,7 +356,7 @@ test('localStorage 접근이 SecurityError여도 createGame은 던지지 않고 
     configurable: true, get() { throw new DOMException('denied', 'SecurityError'); }
   });
   try {
-    const play = fakePlay();
+    const play = fakePlay({ legacy: true }); // 1단계 Play. 새 Play는 game2.test.mjs
     assert.doesNotThrow(() => createGame(play));
     play.fire.interact('monk');
     assert.equal(play.dialogue.isOpen(), true);
