@@ -57,11 +57,17 @@ export function templateOptions({ following, errandState } = {}) {
   return ['저 따라와 주실래요?', '도울 일 있을까요?', '연못 보러 가요'];
 }
 
+// 받침이 없거나 ㄹ받침이면 '로', 그 외 '으로'.
+function withRo(word) {
+  const final = (word.charCodeAt(word.length - 1) - 0xAC00) % 28;
+  return `${word}${final === 0 || final === 8 ? '로' : '으로'}`;
+}
+
 export const MOCK = {
   greet: '반갑습니다. 천천히 둘러보세요.',
   follow: '그러지요. 뒤따라 걷겠습니다.',
   stopFollow: '네, 여기서 제 일을 보겠습니다.',
-  goTo: place => `${place}으로 같이 가 볼까요? 앞장서세요.`,
+  goTo: place => `${withRo(place)} 같이 가 볼까요? 앞장서세요.`,
   errand: '마침 부탁드릴 일이 하나 있어요.',
   fallback: '음, 잘 들었습니다. 차분히 생각해 볼게요.'
 };
@@ -69,7 +75,7 @@ export const MOCK = {
 export const ERRAND = {
   id: 'water',
   offer: '우물에서 물 한 동이만 길어다 주시겠어요?',
-  accepted: '고맙습니다. 우물은 저 아래쪽에 있어요.',
+  accepted: '고맙습니다. 우물은 동쪽 밭 옆에 있어요.',
   declined: '괜찮습니다. 마음 쓰지 마세요.',
   atWell: '시원한 물을 길었어요. 이제 스님께 가져가세요.',
   delivered: '아이고, 시원하네요. 덕분에 한결 수월합니다.',

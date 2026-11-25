@@ -72,3 +72,12 @@ test('인사는 시간대·첫 만남에 따라 달라진다', () => {
   assert.equal(g(100, 1), g(1200, 1));
   assert.notEqual(g(800, 0), g(800, 1));
 });
+
+test('MOCK.goTo 조사: 받침 없음·ㄹ은 로, 그 외 으로', () => {
+  const cases = { 연못가: '연못가로', 대웅전: '대웅전으로', 우물: '우물로', 들밭: '들밭으로', 산문: '산문으로', 앞마당: '앞마당으로' };
+  for (const [place, want] of Object.entries(cases)) assert.ok(MOCK.goTo(place).startsWith(`${want} `), MOCK.goTo(place));
+});
+
+test('ERRAND.accepted는 우물이 동쪽 밭 옆임을 알려 준다', () => {
+  assert.equal(ERRAND.accepted, '고맙습니다. 우물은 동쪽 밭 옆에 있어요.');
+});
