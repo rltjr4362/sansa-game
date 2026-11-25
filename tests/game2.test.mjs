@@ -246,7 +246,7 @@ test('동물 빙의: 스님이 offer_errand 해도 제안되지 않는다', asyn
   assert.equal(errands.state(), 'none');
   assert.equal(memory.get('monk').errands.offered, 0);
   assert.ok(!d.npcText.includes(ERRANDS.water.offer));
-  assert.equal(d.npcText, '부탁이 있어요.');
+  assert.ok([0, 1, 2, 3, 4, 5].some(i => monkToAnimalLine('white', i) === d.npcText));
   assert.deepEqual(d.choices, []);
 });
 

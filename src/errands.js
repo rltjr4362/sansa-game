@@ -35,9 +35,9 @@ export function createErrands(memory) {
     decline: () => move(['offered'], 'none'),
     atWell: () => pickUp('well'),
     atField: () => pickUp('field'),
-    // at를 생략하면 그 부탁의 전달 장소로 본다(스님/공양간).
+    // at은 그 부탁의 전달 장소(스님/공양간)여야 한다.
     deliver(at) {
-      if (!current || (at !== undefined && at !== KINDS[current].dropoff)) return false;
+      if (!current || at !== KINDS[current].dropoff) return false;
       return move(['carrying'], 'done', 'done');
     },
     // 지금 단계에서 켜야 할 장소 대상. 스님은 사람 대상이라 항상 켜져 있어 여기 없다.

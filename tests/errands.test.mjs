@@ -18,7 +18,7 @@ test('정상 흐름: none → offered → accepted → carrying → done', () =>
   assert.equal(e.state(), 'accepted');
   assert.equal(e.atWell(), true);
   assert.equal(e.state(), 'carrying');
-  assert.equal(e.deliver(), true);
+  assert.equal(e.deliver('monk'), true);
   assert.equal(e.state(), 'done');
   assert.equal(e.snapshot(), null);
   assert.deepEqual(mem.calls, [['monk', 'offered'], ['monk', 'accepted'], ['monk', 'done']]);
@@ -38,17 +38,17 @@ test('순서 위반은 false이고 상태·기록이 변하지 않는다', () =>
   assert.equal(e.accept(), false);
   assert.equal(e.decline(), false);
   assert.equal(e.atWell(), false);
-  assert.equal(e.deliver(), false);
+  assert.equal(e.deliver('monk'), false);
   assert.equal(e.state(), 'none');
   e.offer();
   assert.equal(e.offer(), false);
   assert.equal(e.atWell(), false);
-  assert.equal(e.deliver(), false);
+  assert.equal(e.deliver('monk'), false);
   assert.equal(e.state(), 'offered');
   e.accept();
   assert.equal(e.accept(), false);
   assert.equal(e.decline(), false);
-  assert.equal(e.deliver(), false);
+  assert.equal(e.deliver('monk'), false);
   assert.equal(e.offer(), false);
   assert.equal(e.state(), 'accepted');
   e.atWell();
@@ -62,14 +62,14 @@ test('deliver를 두 번 불러도 보상은 1회', () => {
   const mem = fakeMemory();
   const e = createErrands(mem);
   e.offer(); e.accept(); e.atWell();
-  assert.equal(e.deliver(), true);
-  assert.equal(e.deliver(), false);
+  assert.equal(e.deliver('monk'), true);
+  assert.equal(e.deliver('monk'), false);
   assert.equal(mem.calls.filter(c => c[1] === 'done').length, 1);
 });
 
 test('done 후 다시 offer할 수 있다', () => {
   const e = createErrands(fakeMemory());
-  e.offer(); e.accept(); e.atWell(); e.deliver();
+  e.offer(); e.accept(); e.atWell(); e.deliver('monk');
   assert.equal(e.offer(), true);
   assert.equal(e.state(), 'offered');
 });
@@ -90,7 +90,7 @@ test('offer는 종류를 물·채소 번갈아 고른다', () => {
   const e = createErrands(fakeMemory());
   assert.equal(e.kind(), null);
   assert.equal(e.nextKind(), 'water');
-  e.offer(); e.accept(); e.atWell(); e.deliver();
+  e.offer(); e.accept(); e.atWell(); e.deliver('monk');
   assert.equal(e.nextKind(), 'veg');
   e.offer();
   assert.equal(e.kind(), 'veg');
@@ -152,7 +152,7 @@ test('targets: 단계별로 켜야 하는 대상', () => {
   assert.deepEqual(e.targets(), ['well']);
   e.atWell();
   assert.deepEqual(e.targets(), []); // 스님은 사람 대상이라 항상 켜짐
-  e.deliver();
+  e.deliver('monk');
   assert.deepEqual(e.targets(), []);
   e.offer('veg'); e.accept();
   assert.deepEqual(e.targets(), ['field']);

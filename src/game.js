@@ -106,12 +106,19 @@ export function createGame(play, deps = {}) {
   const sentTargets = {};
   function syncTargets() {
     if (typeof play.setTargetEnabled !== 'function') return;
-    const want = errands.targets();
+    const want = play.possessing() === 'visitor' ? errands.targets() : [];
     for (const target of PLACE_TARGETS) {
       const on = want.includes(target);
       if (sentTargets[target] === on) continue;
       sentTargets[target] = on;
       play.setTargetEnabled(target, on);
+    }
+  }
+
+  function clearTargets() {
+    if (typeof play.setTargetEnabled !== 'function') return;
+    for (const target of PLACE_TARGETS) {
+      if (sentTargets[target]) { sentTargets[target] = false; play.setTargetEnabled(target, false); }
     }
   }
 
@@ -277,8 +284,11 @@ export function createGame(play, deps = {}) {
   }
 
   function finishMonk(c, text, { reply, source }, id, errandAtStart) {
-    // 요청 중 부탁 상태가 바뀌었거나 상대가 방문객이 아니면 offer_errand는 따르지 않는다.
-    const action = reply.action === 'offer_errand' && (errands.state() !== errandAtStart || c.partner !== 'visitor')
+    // 방문객이 아닌 상대에게는 follow·stop_follow·offer_errand를 따르지 않는다(대사도 바꾼다).
+    // 요청 중 부탁 상태가 바뀌었을 때도 offer_errand는 따르지 않는다.
+    const visitorOnly = ['follow', 'stop_follow', 'offer_errand'].includes(reply.action);
+    const blocked = visitorOnly && c.partner !== 'visitor';
+    const action = blocked || (reply.action === 'offer_errand' && errands.state() !== errandAtStart)
       ? 'none' : reply.action;
     const request = action === 'go_to'
       ? { requestId: id, npc: 'monk', action: 'go_to', place: reply.place }
@@ -286,15 +296,16 @@ export function createGame(play, deps = {}) {
     const { executed } = applyAction(monk, request, { errands });
     if (executed === 'follow' || executed === 'go_to') released = true;
 
-    // 대본 스님이 동물에게 일반 대답을 하면 동물에게 하는 말로 바꾼다.
-    const toAnimal = isAnimal(c.partner) && source === 'mock' && reply.action === 'none';
+    // 동물에게는 대본 스님의 대답을 모두, 차단된 행동의 대사도 동물에게 하는 말로 바꾼다.
+    const toAnimal = isAnimal(c.partner) && (source === 'mock' || blocked);
     const say = toAnimal ? monkToAnimalLine(c.partner, memory.get('monk').meetings - 1 + c.turn) : reply.say;
     memory.pushTurn('monk', text, say);
 
     if (executed === 'offer_errand') {
-      // Mock 대사("부탁드릴 일이 하나 있어요")만으로는 무슨 부탁인지 알 수 없어 부탁 문구를 붙인다.
+      // 실제 부탁 문구만 보여 준다. 모델이 말한 부탁 문장은 다른 부탁일 수 있어 쓰지 않는다.
+      // Mock 대사("부탁드릴 일이 하나 있어요")는 부탁 내용을 말하지 않으므로 그대로 앞에 둔다.
       const offer = ERRANDS[errands.kind()].offer;
-      dialogue.setNpcText(say ? `${say} ${offer}` : offer);
+      dialogue.setNpcText(source === 'mock' && say ? `${say} ${offer}` : offer);
     } else {
       dialogue.setNpcText(say || '…');
     }
@@ -303,6 +314,11 @@ export function createGame(play, deps = {}) {
   }
 
   function choose(id) {
+    // 열린 방문객–스님 대화이고 스님이 가까이 있을 때만 수락·거절한다.
+    if (!(convo?.npc === 'monk' && convo.partner === 'visitor' && inConversation())) {
+      dialogue.setChoices([]);
+      return;
+    }
     const kind = errands.kind();
     if (id === 'accept' && errands.accept()) {
       dialogue.setNpcText(ERRANDS[kind].accepted);
@@ -390,6 +406,7 @@ export function createGame(play, deps = {}) {
     invalidate();
     convo = null;
     if (dialogue.isOpen()) dialogue.close();
+    syncTargets();
   }));
   dialogue.onSubmit(guard(submit));
   dialogue.onChoice(guard(choose));
@@ -420,6 +437,7 @@ export function createGame(play, deps = {}) {
     dispose() {
       if (disposed) return;
       invalidate();
+      clearTargets();
       disposed = true;
       const engine = llm ?? pending;
       llm = null;
