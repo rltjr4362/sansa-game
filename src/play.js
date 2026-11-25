@@ -25,6 +25,14 @@ export function startPlay(canvas) {
   const journal = createJournalView(app.querySelector('#journal'), refreshInput);
   const modalOpen = () => dialogue.isOpen() || journal.isOpen();
   const hasWorldFocus = target => target === app || target === canvas || target === document.body;
+  // 마우스로 누른 버튼(도장, 설정 등)이 포커스를 쥐고 있으면 게임 키가 죽는다.
+  // 클릭 처리가 끝난 뒤 포커스를 장면으로 돌린다. 대화창·일지·모델 메뉴는 포커스가 필요해 제외.
+  document.addEventListener('click', event => {
+    if (!event.detail || !(event.target instanceof Element)) return;
+    const button = event.target.closest('button');
+    if (!button || button.closest('#dialogue, #journal, .model-picker, #settings')) return;
+    setTimeout(() => { if (document.activeElement === button) app.focus({ preventScroll: true }); });
+  });
   const easter = createEaster(() => {
     viewer.refresh();
     bellEffect();
