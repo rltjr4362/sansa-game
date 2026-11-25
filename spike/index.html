@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<title>산사 LLM 스파이크</title>
+<style>
+body{font:14px system-ui,sans-serif;margin:16px;background:#f6f1e7;color:#2b382f}
+table{border-collapse:collapse;width:100%;margin-top:12px}td,th{border:1px solid #cfc6b4;padding:4px 6px;vertical-align:top}
+.bad{background:#f3d3cc}.ok{background:#dbe8d2}#log{white-space:pre-wrap;font:12px monospace}
+canvas{width:120px;height:40px;border:1px solid #ccc}
+</style>
+<h1>산사 LLM 스파이크</h1>
+<label>모델 <select id="model">
+  <option value="Qwen3.5-2B-q4f16_1-MLC">Qwen3.5-2B (기본 후보)</option>
+  <option value="gemma-4-E2B-it-q4f16_1-MLC">Gemma 4 E2B (비교)</option>
+</select></label>
+<label><input type="checkbox" id="withOptions" checked> options 생성 포함</label>
+<button id="load">모델 받기</button> <button id="run" disabled>20문항 실행</button> <button id="save" disabled>결과 JSON 저장</button>
+<canvas id="spin"></canvas>
+<div id="log"></div>
+<div id="summary"></div>
+<table id="rows"><thead><tr><th>#</th><th>입력</th><th>기대</th><th>행동</th><th>장소</th><th>대사</th><th>추천</th><th>첫토큰ms</th><th>완료ms</th><th>최대 프레임 간격ms</th></tr></thead><tbody></tbody></table>
+<script type="module">
+import { CreateWebWorkerMLCEngine } from 'https://esm.run/@mlc-ai/web-llm@0.2.89';
+import { REPLY_SCHEMA, parseReply } from '../src/contracts.js';
+import { PROMPTS, SYSTEM, SYSTEM_NO_OPTIONS, CONTEXT } from './prompts.js';
+
+const $ = id => document.getElementById(id);
+const log = t => { $('log').textContent += t + '\n'; };
+let engine = null, loadedId = null, results = [];
+
+// 렌더 부하 대용: 매 프레임 캔버스를 그리고 프레임 간격을 잰다.
+let lastFrame = performance.now(), maxGap = 0;
+const g = $('spin').getContext('2d');
+(function frame(t) {
+  maxGap = Math.max(maxGap, t - lastFrame); lastFrame = t;
+  g.clearRect(0, 0, 300, 150); g.fillStyle = '#526c57';
+  g.fillRect((t / 4) % 300, 50, 40, 40);
+  requestAnimationFrame(frame);
+})(lastFrame);
+
+if (!navigator.gpu) log('WebGPU 없음: 이 브라우저에서는 스파이크를 돌릴 수 없습니다.');
+
+$('load').onclick = async () => {
+  const id = $('model').value;
+  $('load').disabled = true;
+  const t0 = performance.now();
+  try {
+    if (!engine) {
+      engine = await CreateWebWorkerMLCEngine(
+        new Worker(new URL('./worker.js', import.meta.url), { type: 'module' }), id,
+        { initProgressCallback: r => { document.title = Math.round(r.progress * 100) + '% ' + r.text; } });
+    } else {
+      await engine.reload(id);
+    }
+    loadedId = id;
+    log(`로드 완료 ${id}: ${((performance.now() - t0) / 1000).toFixed(1)}s`);
+    $('run').disabled = false;
+  } catch (e) {
+    log('로드 실패: ' + e.message);
+  } finally {
+    $('load').disabled = false;
+  }
+};
+
+async function ask(text, withOptions) {
+  const messages = [
+    { role: 'system', content: (withOptions ? SYSTEM : SYSTEM_NO_OPTIONS) + '\n' + CONTEXT },
+    { role: 'user', content: text }
+  ];
+  const req = {
+    messages, stream: true, temperature: 0.7, max_tokens: 160,
+    response_format: { type: 'json_object', schema: JSON.stringify(REPLY_SCHEMA) }
+  };
+  if (loadedId.startsWith('Qwen')) req.extra_body = { enable_thinking: false };
+  const t0 = performance.now(); let first = null, out = '';
+  maxGap = 0;
+  const stream = await engine.chat.completions.create(req);
+  for await (const chunk of stream) {
+    const d = chunk.choices[0]?.delta?.content || '';
+    if (d && first === null) first = performance.now() - t0;
+    out += d;
+  }
+  return { raw: out, first: Math.round(first ?? -1), total: Math.round(performance.now() - t0), gap: Math.round(maxGap) };
+}
+
+$('run').onclick = async () => {
+  $('run').disabled = true; results = [];
+  const withOptions = $('withOptions').checked, body = $('rows').tBodies[0];
+  body.innerHTML = '';
+  for (const [i, p] of PROMPTS.entries()) {
+    let r;
+    try { r = await ask(p.text, withOptions); } catch (e) { r = { raw: 'ERROR ' + e.message, first: -1, total: -1, gap: -1 }; }
+    const reply = parseReply(r.raw);
+    const actionOk = reply && reply.action === p.expect && (p.expect !== 'go_to' || reply.place === p.place);
+    results.push({ ...p, ...r, reply, actionOk });
+    const tr = body.insertRow();
+    tr.className = actionOk ? 'ok' : 'bad';
+    for (const v of [i + 1, p.text, p.expect + (p.place ? ':' + p.place : ''), reply?.action ?? 'JSON실패', reply?.place ?? '', reply?.say ?? r.raw, (reply?.options || []).join(' / '), r.first, r.total, r.gap])
+      tr.insertCell().textContent = v;
+  }
+  const n = results.length, med = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+  const summary = {
+    model: loadedId, withOptions,
+    jsonValid: results.filter(r => r.reply).length / n,
+    actionAccuracy: results.filter(r => r.actionOk).length / n,
+    goToAccuracy: results.filter(r => r.expect === 'go_to' && r.actionOk).length / results.filter(r => r.expect === 'go_to').length,
+    optionsValid: withOptions ? results.filter(r => r.reply?.options).length / n : null,
+    medianFirstMs: med(results.map(r => r.first)),
+    medianTotalMs: med(results.map(r => r.total)),
+    worstFrameGapMs: Math.max(...results.map(r => r.gap))
+  };
+  $('summary').textContent = JSON.stringify(summary, null, 2);
+  window.spikeResult = { summary, results };
+  $('run').disabled = false; $('save').disabled = false;
+};
+
+$('save').onclick = () => {
+  const blob = new Blob([JSON.stringify(window.spikeResult, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  const s = window.spikeResult.summary;
+  a.href = URL.createObjectURL(blob);
+  a.download = `spike-${s.model}-${s.withOptions ? 'opt' : 'noopt'}.json`;
+  a.click();
+};
+</script>
+</html>
