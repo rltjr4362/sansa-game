@@ -122,6 +122,35 @@ button:hover,button[aria-pressed=true]{background:#e4dbe8}
 #dialogueForm button{background:#d7e3d8;color:#304437;font-weight:700;white-space:nowrap}
 #dialogueForm button:hover{background:#c9dbc9}
 #dialogueStatus{margin:0;color:#5b5061;font-size:12px;overflow-wrap:anywhere}
+main[data-mode="title"] > :not(#land,#titleScreen){display:none!important}
+#titleScreen{
+  position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;border:0;
+  padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right))
+    max(14px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));
+  overflow:auto;color:#443a49;background:linear-gradient(155deg,#f4eaf23d,#28243657)
+}
+#titleScreen[open]{display:flex;flex-direction:column}
+#titleScreen::backdrop{background:transparent}
+.title-panel{
+  flex:none;width:min(100%,560px);margin:auto;padding:clamp(20px,5vw,38px);
+  text-align:center;background:#fbf3edeb;border:1px solid #e7d7d9;border-radius:13px;
+  box-shadow:0 12px 48px #3b334b52;backdrop-filter:blur(8px)
+}
+#titleHeading{font:700 clamp(35px,7vw,62px)/1.1 Batang,"AppleMyungjo","Malgun Gothic",serif;letter-spacing:-.07em}
+#titleSubtitle{margin:10px 0 25px;color:#68576d;line-height:1.5}
+.title-choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:10px}
+.title-card{
+  display:grid;align-content:center;gap:6px;width:100%;min-height:78px;padding:12px 14px;
+  border:1px solid #c6b7c9;border-radius:7px;background:#fff6efef;color:#504554;text-align:left;overflow-wrap:anywhere
+}
+.title-card strong{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:17px}
+.title-detail{font-size:12px;line-height:1.45}
+.title-recommended{padding:2px 6px;border-radius:4px;background:#d7e3d8;color:#384d48;font-size:11px;white-space:nowrap}
+.title-card:not(:disabled):hover,.title-card[aria-pressed=true]{border-color:#766679;background:#e4dbe8}
+.title-card:disabled{border-color:#e7d7d9;background:#fbf3ed;color:#685c6c;cursor:default}
+#titleNote{margin:12px 0 0;color:#68576d;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+#titleSkip{margin-top:10px;min-height:44px;color:#504554;font-size:12px;text-underline-offset:3px}
+#titleSkip[aria-pressed=true]{text-decoration:underline}
 @media(max-width:560px){
   .landTools{flex-wrap:wrap;justify-content:flex-end}
   #dialogue{width:calc(100% - 16px)}
@@ -171,6 +200,15 @@ button:hover,button[aria-pressed=true]{background:#e4dbe8}
   <div class="dialogue-content">
     <div id="journalEntries"></div>
     <p id="journalEmpty">아직 기록이 없어요.</p>
+  </div>
+</dialog>
+<dialog id="titleScreen" role="dialog" aria-modal="true" aria-labelledby="titleHeading" aria-describedby="titleSubtitle">
+  <div class="title-panel">
+    <h1 id="titleHeading">산사의 하루</h1>
+    <p id="titleSubtitle">산사를 거닐며 스님과 이야기해요</p>
+    <div class="title-choices" id="titleChoices" role="group" aria-label="AI 스님 선택"></div>
+    <p id="titleNote" role="status" hidden></p>
+    <button id="titleSkip" type="button">AI 없이 시작</button>
   </div>
 </dialog>
 </main>
