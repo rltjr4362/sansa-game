@@ -86,12 +86,12 @@ export function affinityBand(affinity) {
 /**
  * brain 입력. 플레이 흐름(Plan 2)이 만들고 두뇌(Plan 3)가 읽는다.
  * @typedef {{
- *   npc: 'monk',
+ *   npc: 'monk'|'dog'|'white'|'cat',   // 말하는 쪽. 동물은 2단계
  *   clock: number,                 // 0~1439 분
  *   weather: string,               // '맑음' | '옅은 안개' | '가랑비'
  *   place: string|null,            // 스님이 지금 실제로 있는 장소(현재 위치로 판정, 식별 불가면 null). 걷는 중에 visits[id][0]을 쓰지 않는다
  *   activity: string,              // 지금 하는 일. 걷는 중 '걷는 중', 따라가는 중 '방문객을 따라가는 중', 그 외 phase가 'act'일 때 현재 방문 라벨
- *   partner: 'visitor',            // MVP는 방문객만. 2단계에서 'monk'|'dog'|'white'|'cat'
+ *   partner: Who,                  // 말을 건 쪽(지금 조종 중인 캐릭터)
  *   following: boolean,
  *   errand: null | {id: string, state: 'offered'|'accepted'|'carrying'},
  *   meetings: number,
@@ -153,11 +153,33 @@ export function affinityBand(affinity) {
  *   monk: MonkHandle,
  *   dialogue: DialogueView,
  *   playerTile(): [number, number],             // 지금 조종 중인 캐릭터의 타일
- *   possessing(): 'visitor'|'monk',
- *   onInteract(cb: (target: 'monk'|'well') => void): void, // E 키: 스님(대화 가능 거리·경로) 또는 우물 근처
- *   onPossessChange(cb: (who: 'visitor'|'monk') => void): void,
+ *   possessing(): Who,
+ *   onInteract(cb: (target: Target) => void): void, // Space/E. 조종 중인 캐릭터가 스님이 아니면 발생. 자기 자신은 대상이 아님
+ *   setTargetEnabled(target: 'well'|'field'|'kitchen', on: boolean): void, // 꺼진 대상은 표시·발생 없음. 기본값 모두 꺼짐
+ *   onPossessChange(cb: (who: Who) => void): void,   // Q: visitor→monk→dog→white→cat→visitor 순환
  *   onTick(cb: (dt: number) => void): void,     // 시뮬레이션 한 프레임마다 (일시정지 중엔 안 부름)
  *   setHud(text: string): void,                 // 화면 한쪽 작은 상태 줄 (예: "부탁: 물 길어 오기")
- *   modelButton(onClick: () => void): {setText(text: string): void, hide(): void} // "AI 스님 깨우기" 버튼
+ *   modelButton(onClick: () => void): {setText(text: string): void, hide(): void}, // "AI 스님 깨우기" 버튼 (MVP, modelPicker로 대체)
+ *   modelPicker(choices: Array<{id: string, label: string}>, onPick: (id: string) => void): {setText(text: string): void, hide(): void},
+ *   animals: Record<'dog'|'white'|'cat', AnimalHandle>,
+ *   onJournal(cb: () => JournalEntry[]): void,   // J 키: Play가 cb()의 결과로 일지 패널을 열고 닫는다
  * }} Play
  */
+
+// ── 2단계 ────────────────────────────────────────────────────────────────
+/** @typedef {'visitor'|'monk'|'dog'|'white'|'cat'} Who */
+/** @typedef {'monk'|'dog'|'white'|'cat'|'well'|'field'|'kitchen'} Target
+ * field = 익은 밭(Temple.beds 접근 타일), kitchen = 공양간 문 앞. 종루 이스터에그는 Play 안에서 처리하고 Target으로 내보내지 않는다. */
+
+/**
+ * 동물 손잡이. Plan 2(Codex)가 구현, game이 호출. 예외를 던지지 않는다.
+ * @typedef {{
+ *   tile(): [number, number],
+ *   possessed(): boolean,
+ *   say(text: string, seconds?: number): void,      // 머리 위 말풍선
+ *   emote(kind: 'wag'|'sit'|'jump'|'sniff'|'purr'): void, // 원본 자세 재사용, 약 3초
+ *   hold(seconds: number): void                     // 제자리에서 상대를 바라봄 (스님 hold와 같은 규칙)
+ * }} AnimalHandle
+ */
+
+/** @typedef {{title: string, lines: string[]}} JournalEntry */
