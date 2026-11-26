@@ -91,6 +91,23 @@ test('AI unavailability disables the cards and leaves only AI-free start', () =>
   assert.deepEqual(title.starts, [null]);
 });
 
+test('setChoiceEnabled disables one card with a note under it and moves the selection', () => {
+  const title = openTitle();
+  const [first, second] = title.cards;
+  title.handle.setSelected('first');
+  title.handle.setChoiceEnabled('first', false, '이 기기엔 무거워요');
+  assert.equal(first.disabled, true);
+  assert.equal(second.disabled, false);
+  assert.equal(first.children.at(-1).textContent, '이 기기엔 무거워요');
+  assert.equal(title.focused(), second);
+  first.click();
+  assert.deepEqual(title.starts, []);
+  title.handle.setChoiceEnabled('first', true);
+  assert.equal(first.disabled, false);
+  assert.equal(first.children.at(-1).textContent, '');
+  title.handle.setChoiceEnabled('nope', false, 'x');
+});
+
 test('a second activation during the fade cannot start the game again', async () => {
   const title = openTitle({ reduced: false });
   title.cards[0].click();

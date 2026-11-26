@@ -87,10 +87,11 @@ export function createScene(canvas) {
     return [ox+scale*(x*cs-y*sn),oy+scale*((x*sn+y*cs)*VIEW_SQUASH-z*.91)];
   }
   const depth=(x,y)=>x*sn+y*cs;
+  let lowDensity=false;
   function resize(){
     const width=canvas.clientWidth,height=canvas.clientHeight;
     const dpr=Math.min(2,devicePixelRatio||1);
-    const density=Math.min(2,Math.max(dpr,Math.min(2,2000/Math.max(1,width))));
+    const density=lowDensity?1:Math.min(2,Math.max(dpr,Math.min(2,2000/Math.max(1,width))));
     w=canvas.width=Math.max(1,Math.round(width*density));h=canvas.height=Math.max(1,Math.round(height*density));
     scale=Math.min(w*.94/(2*radius),h*.79/(radius*1.06+4));ox=w*.5;oy=h*.55;
     c.imageSmoothingEnabled=false;
@@ -972,5 +973,5 @@ export function createScene(canvas) {
     const [x,y]=project(s.x,s.y,height);
     return {x:x/w,y:y/h,size:scale/w};
   }
-  return {render,resize,position,smallSubjects};
+  return {render,resize,position,smallSubjects,setLowDensity(on){if(lowDensity===!!on)return;lowDensity=!!on;resize();}};
 }

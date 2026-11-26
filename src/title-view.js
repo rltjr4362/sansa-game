@@ -30,7 +30,7 @@ export function createTitleView(root, choices, onStart, onClose) {
       badge.textContent = '추천';
       name.append(badge);
     }
-    return { id, button };
+    return { id, button, noteEl: null };
   });
   const entries = [...cards, skip];
   const enabled = () => entries.filter(({ button }) => !button.disabled);
@@ -101,6 +101,20 @@ export function createTitleView(root, choices, onStart, onClose) {
       note.textContent = !ok && message ? message : '';
       note.hidden = !note.textContent;
       if (selected.button.disabled) choose(skip);
+    },
+    setChoiceEnabled(id, ok, noteText) {
+      if (starting) return;
+      const card = cards.find(card => card.id === id);
+      if (!card) return;
+      card.button.disabled = !ok;
+      const text = !ok && noteText ? noteText : '';
+      if (text && !card.noteEl) {
+        card.noteEl = document.createElement('span');
+        card.noteEl.className = 'title-card-note';
+        card.button.append(card.noteEl);
+      }
+      if (card.noteEl) card.noteEl.textContent = text;
+      if (selected.button.disabled) choose(cards.find(c => !c.button.disabled) ?? skip);
     },
     setSelected(id) {
       if (starting) return;

@@ -18,6 +18,12 @@ export function startPlay(canvas) {
   const enabledTargets = new Set();
   let journalEntries = () => [];
   let title = null;
+  let hudText = '', busyText = '';
+  const showHud = () => {
+    const hud = app.querySelector('#hud');
+    hud.textContent = [hudText, busyText].filter(Boolean).join(' · ');
+    hud.hidden = !hud.textContent;
+  };
 
   const refreshInput = () => {
     input.clear();
@@ -90,12 +96,18 @@ export function startPlay(canvas) {
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = 'AI 스님 깨우기';
+    // 실패 뒤 재시도: onRetry가 있으면 누를 때 그 동작을 하고 평소 동작(목록 열기)은 건너뛴다.
+    button.addEventListener('click', event => {
+      if (!button.onRetry) return;
+      event.stopImmediatePropagation();
+      button.onRetry();
+    });
     return button;
   }
 
   function modelProgress(button, root, close = () => {}) {
     return {
-      setText(text) { button.textContent = text; close(); },
+      setText(text, onRetry) { button.onRetry = onRetry ?? null; button.textContent = text; close(); },
       hide() {
         close();
         if (root.contains(document.activeElement)) app.focus({ preventScroll: true });
@@ -129,9 +141,13 @@ export function startPlay(canvas) {
       return title;
     },
     setHud(text) {
-      const hud = app.querySelector('#hud');
-      hud.textContent = text;
-      hud.hidden = !text;
+      hudText = text;
+      showHud();
+    },
+    setBusy(on, text = '') {
+      viewer.setBusy(on);
+      busyText = on ? text : '';
+      showHud();
     },
     modelButton(onClick) {
       const button = modelTrigger();

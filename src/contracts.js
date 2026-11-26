@@ -159,9 +159,10 @@ export function affinityBand(affinity) {
  *   onPossessChange(cb: (who: Who) => void): void,   // Q: visitor→monk→dog→white→cat→visitor 순환
  *   onTick(cb: (dt: number) => void): void,     // 시뮬레이션 한 프레임마다 (일시정지 중엔 안 부름)
  *   setHud(text: string): void,                 // 화면 한쪽 작은 상태 줄 (예: "부탁: 물 길어 오기")
- *   modelButton(onClick: () => void): {setText(text: string): void, hide(): void}, // "AI 스님 깨우기" 버튼 (MVP, modelPicker로 대체)
- *   modelPicker(choices: Array<{id: string, label: string}>, onPick: (id: string) => void): {setText(text: string): void, hide(): void},
+ *   modelButton(onClick: () => void): {setText(text: string, onClick?: () => void): void, hide(): void}, // onClick이 있으면 버튼을 누를 때 그 동작을 한다(실패 후 재시도). "AI 스님 깨우기" 버튼 (MVP, modelPicker로 대체)
+ *   modelPicker(choices: Array<{id: string, label: string}>, onPick: (id: string) => void): {setText(text: string, onClick?: () => void): void, hide(): void},
  *   animals: Record<'dog'|'white'|'cat', AnimalHandle>,
+ *   setBusy?(on: boolean, text?: string): void, // (선택) AI 불러오는 동안 true. 렌더를 ~4fps·낮은 해상도로 줄이고 HUD에 text 표시. 없으면 무시
  *   onJournal(cb: () => JournalEntry[]): void,   // J 키: Play가 cb()의 결과로 일지 패널을 열고 닫는다
  *   showTitle(choices: TitleChoice[], onStart: (id: string|null) => void): TitleHandle, // 시작 화면. 시작 전에는 관찰 배경만 돌고 입력은 막힌다
  * }} Play
@@ -192,6 +193,7 @@ export function affinityBand(affinity) {
  * 그 뒤 Play는 시작 화면을 닫고 플레이 모드로 들어간다.
  * @typedef {{
  *   setAiAvailable(ok: boolean, note?: string): void,   // false면 AI 선택지를 비활성화하고 note 표시 (예: "이 브라우저는 WebGPU를 지원하지 않아요")
- *   setSelected(id: string|null): void                  // 지난번 선택 강조
+ *   setSelected(id: string|null): void,                 // 지난번 선택 강조
+ *   setChoiceEnabled?(id: string, ok: boolean, note?: string): void // (선택) 카드 하나만 비활성화하고 그 아래에 note 표시. 없으면 무시
  * }} TitleHandle
  */
