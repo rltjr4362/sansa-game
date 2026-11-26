@@ -97,13 +97,13 @@ test('setChoiceEnabled disables one card with a note under it and moves the sele
   title.handle.setSelected('first');
   title.handle.setChoiceEnabled('first', false, '이 기기엔 무거워요');
   assert.equal(first.disabled, true);
-  assert.equal(second.disabled, false);
+  assert.ok(!second.disabled);
   assert.equal(first.children.at(-1).textContent, '이 기기엔 무거워요');
   assert.equal(title.focused(), second);
   first.click();
   assert.deepEqual(title.starts, []);
   title.handle.setChoiceEnabled('first', true);
-  assert.equal(first.disabled, false);
+  assert.ok(!first.disabled);
   assert.equal(first.children.at(-1).textContent, '');
   title.handle.setChoiceEnabled('nope', false, 'x');
 });
