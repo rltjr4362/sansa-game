@@ -125,3 +125,14 @@ test('동물 NPC history도 user 앞에 들어간다', () => {
   const m = buildMessages(snap({ npc: 'dog', history }), 'c');
   assert.deepEqual(m.slice(1), [...history, { role: 'user', content: 'c' }]);
 });
+
+test('buildMessages: 최악의 입력도 2048 컨텍스트에 여유 있게 들어간다(<1500토큰, 글자수/1.5)', () => {
+  const long = n => '가'.repeat(n);
+  const history = [
+    { role: 'user', content: long(200) }, { role: 'assistant', content: long(300) },
+    { role: 'user', content: long(200) }, { role: 'assistant', content: long(300) }
+  ];
+  const m = buildMessages(snap({ history, errand: { id: 'water', state: 'carrying' }, following: true }), long(200));
+  const tokens = m.reduce((n, x) => n + x.content.length, 0) / 1.5;
+  assert.ok(tokens < 1500, `estimated ${Math.round(tokens)} tokens`);
+});
