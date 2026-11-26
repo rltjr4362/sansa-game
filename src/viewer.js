@@ -452,7 +452,7 @@ export function createViewer(land,Scene,sim,visitor,play){
   document.addEventListener('fullscreenchange',()=>{el('full').setAttribute('aria-pressed',String(!!document.fullscreenElement));});
   window.addEventListener('resize',()=>{needsPaint=true;});
   document.addEventListener('visibilitychange',()=>{prevTime=null;needsPaint=true;syncAudio();if(document.hidden)speak(null);});
-  let busy=false;
+  let aiBusy=false;
   function frame(ts){
     const dt=prevTime===null?0:Math.min(.20,Math.max(0,(ts-prevTime)/1000));prevTime=ts;
     if(!document.hidden){
@@ -475,7 +475,7 @@ export function createViewer(land,Scene,sim,visitor,play){
       cameraAge=Math.min(2.6,cameraAge+dt);angle=start+(end-start)*Temple.smooth(cameraAge/2.6);
       idle+=dt;
       if(!playing&&idle>9&&el('settings').hidden&&el('meet').hidden&&!app.querySelector(':focus-visible'))app.classList.add('quiet');
-      const due=busy?ts-lastPaint>=250:(needsPaint||moving||zooming||(!paused&&ts-lastPaint>=1000/30-1));
+      const due=aiBusy?ts-lastPaint>=250:(needsPaint||moving||zooming||(!paused&&ts-lastPaint>=1000/30-1));
       if(due){
         const room=playing?null:districts[el('region').value]?.room||heldRoom;
         Scene.render(sim,angle,cameraAge>=2.6,{visitor,protagonist:playing?play.actor():null,observed:observedActor(),room,
@@ -492,6 +492,6 @@ export function createViewer(land,Scene,sim,visitor,play){
     setTitleMode:on=>setMode(on?'title':'play'),
     refresh:()=>{needsPaint=true;},
     // AI를 올리는 동안 GPU를 양보한다: 약 4fps, 낮은 해상도.
-    setBusy:on=>{busy=!!on;Scene.setLowDensity?.(busy);needsPaint=true;}
+    setBusy:on=>{aiBusy=!!on;Scene.setLowDensity?.(aiBusy);needsPaint=true;}
   };
 }
