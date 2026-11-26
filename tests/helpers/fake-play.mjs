@@ -57,6 +57,9 @@ export function fakeDialogue() {
   return d;
 }
 
+// 모든 모델이 가능한 기기. game 테스트의 기본 probe.
+export const STRONG_PROBE = async () => ({ webgpu: true, f16: true, maxBuffer: 4 * 2 ** 30, maxStorage: 2 ** 30 });
+
 export function fakePlay({ legacy = false, title = false } = {}) {
   const cb = {};
   const monk = fakeMonk();
@@ -69,9 +72,11 @@ export function fakePlay({ legacy = false, title = false } = {}) {
     onPossessChange: f => { cb.possess = f; },
     onTick: f => { cb.tick = f; },
     setHud: t => p.hud.push(t),
+    busy: [],
+    setBusy: (on, text) => p.busy.push([on, text]),
     modelButton(onClick) {
       cb.button = onClick;
-      return { setText: t => p.button.texts.push(t), hide: () => { p.button.hidden = true; } };
+      return { setText: (t, a) => { p.button.texts.push(t); p.button.action = a; }, hide: () => { p.button.hidden = true; } };
     },
     fire: {
       interact: t => cb.interact(t),
@@ -90,16 +95,17 @@ export function fakePlay({ legacy = false, title = false } = {}) {
   p.modelPicker = (choices, onPick) => {
     p.picker.choices = choices;
     cb.pick = onPick;
-    return { setText: t => p.picker.texts.push(t), hide: () => { p.picker.hidden = true; } };
+    return { setText: (t, a) => { p.picker.texts.push(t); p.picker.action = a; }, hide: () => { p.picker.hidden = true; } };
   };
   if (title) {
-    p.title = { choices: null, selected: undefined, available: [] };
+    p.title = { choices: null, selected: undefined, available: [], choiceEnabled: [] };
     p.showTitle = (choices, onStart) => {
       p.title.choices = choices;
       cb.start = onStart;
       return {
         setSelected: id => { p.title.selected = id; },
-        setAiAvailable: (ok, note) => p.title.available.push([ok, note])
+        setAiAvailable: (ok, note) => p.title.available.push([ok, note]),
+        setChoiceEnabled: (id, ok, note) => p.title.choiceEnabled.push([id, ok, note])
       };
     };
     p.fire.start = id => cb.start(id);

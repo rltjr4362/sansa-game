@@ -5,13 +5,13 @@ import { createMemory } from '../src/memory.js';
 import { createErrands } from '../src/errands.js';
 import { MONK_NAME, ERRAND, MOCK, greetingFor, openingFor, templateOptions } from '../src/lines.js';
 
-import { flush, fakeStorage, fakePlay, manualRouter, replyOf } from './helpers/fake-play.mjs';
+import { STRONG_PROBE, flush, fakeStorage, fakePlay, manualRouter, replyOf } from './helpers/fake-play.mjs';
 
 function setup(deps = {}) {
   const play = fakePlay({ legacy: true }); // 1단계 Play. 새 Play는 game2.test.mjs
   const memory = deps.memory ?? createMemory(fakeStorage(), () => new Date(2026, 10, 25, 12).getTime());
   const errands = deps.errands ?? createErrands(memory);
-  const game = createGame(play, { memory, errands, modelStorage: fakeStorage(), ...deps });
+  const game = createGame(play, { memory, errands, modelStorage: fakeStorage(), probe: STRONG_PROBE, ...deps });
   return { play, memory, errands, game, d: play.dialogue, monk: play.monk };
 }
 
@@ -289,7 +289,7 @@ test('빙의 전환: 대화창이 닫혀 있으면 close 안 부름', () => {
 
 test('모델 버튼: 초기 문구, 미지원', async () => {
   const { play } = setup({ loadWebLLM: async () => ({ supported: async () => false, load: async () => { throw new Error('no'); } }) });
-  assert.deepEqual(play.button.texts, ['AI 스님 깨우기 (약 2.7GB)']);
+  assert.deepEqual(play.button.texts, ['AI 스님 깨우기 (약 1.1GB)']);
   play.fire.button();
   await flush();
   assert.equal(play.button.texts.at(-1), '이 기기에선 대본 스님');
@@ -325,7 +325,7 @@ test('모델 버튼: 로드 실패', async () => {
   const { play } = setup({ loadWebLLM: async () => ({ supported: async () => true, load: async () => { throw new Error('oom'); } }) });
   play.fire.button();
   await flush();
-  assert.equal(play.button.texts.at(-1), '깨우기 실패 · 대본 스님');
+  assert.equal(play.button.texts.at(-1), '깨우기 실패 · 대본 스님과 함께해요');
 });
 
 // ── dispose ───────────────────────────────────────────────

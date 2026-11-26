@@ -8,7 +8,7 @@ import {
   MONK_NAME, ERRANDS, ANIMAL_STATUS, NPC_NAMES, MOCK, scriptedAnimalLine, animalOptions,
   animalPartnerOptions, monkToAnimalLine, templateOptions
 } from '../src/lines.js';
-import { flush, fakeStorage, fakePlay, manualRouter } from './helpers/fake-play.mjs';
+import { STRONG_PROBE, flush, fakeStorage, fakePlay, manualRouter } from './helpers/fake-play.mjs';
 
 const NOON = new Date(2026, 10, 25, 12).getTime();
 const GEMMA = 'gemma-4-E2B-it-q4f16_1-MLC';
@@ -18,7 +18,7 @@ function setup(deps = {}, playOpts = {}) {
   const play = fakePlay(playOpts);
   const memory = deps.memory ?? createMemory(fakeStorage(), () => NOON);
   const errands = deps.errands ?? createErrands(memory);
-  const game = createGame(play, { memory, errands, modelStorage: fakeStorage(), ...deps });
+  const game = createGame(play, { memory, errands, modelStorage: fakeStorage(), probe: STRONG_PROBE, ...deps });
   return { play, memory, errands, game, d: play.dialogue, monk: play.monk, animals: play.animals };
 }
 // 호감도를 close(15) 이상으로 올린다: 부탁 완료 3번 = +15.
@@ -415,8 +415,8 @@ test('onJournal: 만난 NPC 항목을 돌려준다', () => {
 // ── 모델 선택 ──────────────────────────────────────────────
 
 const CHOICES = [
-  { id: GEMMA, label: '똑똑하게 · 2.7GB' },
-  { id: QWEN, label: '가볍게 · 1.1GB' }
+  { id: QWEN, label: '가볍게 · 1.1GB' },
+  { id: GEMMA, label: '똑똑하게 · 2.7GB' }
 ];
 
 function loader() {
@@ -460,7 +460,7 @@ test('모델 선택: 로드 실패 뒤 다시 고를 수 있다', async () => {
   const { play } = setup({ loadWebLLM });
   play.fire.pick(GEMMA);
   await flush();
-  assert.equal(play.picker.texts.at(-1), '깨우기 실패 · 대본 스님');
+  assert.equal(play.picker.texts.at(-1), '깨우기 실패 · 가벼운 AI로 다시');
   play.fire.pick(QWEN);
   await flush();
   assert.equal(n, 2);
@@ -479,26 +479,26 @@ test('localStorage 접근이 막혀도 모델 선택은 던지지 않는다', as
 test('옛 Play(modelPicker 없음): modelButton 폴백, 저장된 선택을 따른다', async () => {
   const l1 = loader();
   const a = setup({ loadWebLLM: l1.loadWebLLM }, { legacy: true });
-  assert.deepEqual(a.play.button.texts, ['AI 스님 깨우기 (약 2.7GB)']);
+  assert.deepEqual(a.play.button.texts, ['AI 스님 깨우기 (약 1.1GB)']);
   a.play.fire.button();
   await flush();
-  assert.equal(l1.calls[0].modelId, GEMMA);
+  assert.equal(l1.calls[0].modelId, QWEN);
 
   const st = fakeStorage();
-  st.setItem('sansa.model', QWEN);
+  st.setItem('sansa.model', GEMMA);
   const l2 = loader();
   const b = setup({ modelStorage: st, loadWebLLM: l2.loadWebLLM }, { legacy: true });
-  assert.deepEqual(b.play.button.texts, ['AI 스님 깨우기 (약 1.1GB)']);
+  assert.deepEqual(b.play.button.texts, ['AI 스님 깨우기 (약 2.7GB)']);
   b.play.fire.button();
   await flush();
-  assert.equal(l2.calls[0].modelId, QWEN);
+  assert.equal(l2.calls[0].modelId, GEMMA);
 });
 
 // ── 시작 화면 ──────────────────────────────────────────────
 
 const TITLE_CHOICES = [
-  { id: GEMMA, label: '똑똑한 AI 스님', detail: '처음 한 번 2.7GB · 말을 잘 알아들어요', recommended: true },
-  { id: QWEN, label: '가벼운 AI 스님', detail: '처음 한 번 1.1GB · 빨리 받아요' }
+  { id: QWEN, label: '가벼운 AI 스님', detail: '처음 한 번 1.1GB · 대부분의 노트북', recommended: true },
+  { id: GEMMA, label: '똑똑한 AI 스님', detail: '처음 한 번 2.7GB · 고사양 PC용' }
 ];
 const NOTE = '이 브라우저에서는 AI를 쓸 수 없어요 · 대본 스님과 함께해요';
 
@@ -520,8 +520,7 @@ test('시작 화면: 저장값이 없거나 잘못되면 setSelected(null)', () 
 });
 
 test('시작 화면: 지원 안 하면 setAiAvailable(false, 안내)', async () => {
-  const loadWebLLM = async () => ({ supported: async () => false });
-  const { play } = setup({ loadWebLLM }, { title: true });
+  const { play } = setup({ probe: async () => ({}) }, { title: true });
   await flush();
   assert.deepEqual(play.title.available, [[false, NOTE]]);
 });
@@ -570,4 +569,86 @@ test('showTitle이 없는 Play는 loadWebLLM을 미리 부르지 않는다', asy
   setup({ loadWebLLM: l.loadWebLLM });
   await flush();
   assert.equal(l.calls.length, 0);
+});
+
+// ── 저사양 기기 ────────────────────────────────────────────
+
+const MiB = 1024 * 1024;
+const weakProbe = async () => ({ webgpu: true, f16: true, maxBuffer: 512 * MiB, maxStorage: 128 * MiB });
+const HEAVY = '이 기기의 그래픽 메모리로는 무거워요';
+
+test('시작 화면: 약한 기기면 Gemma 카드만 이유와 함께 끈다', async () => {
+  const { play } = setup({ probe: weakProbe }, { title: true });
+  await flush();
+  assert.deepEqual(play.title.available, [[true, undefined]]);
+  assert.deepEqual(play.title.choiceEnabled, [[GEMMA, false, HEAVY]]);
+});
+
+test('시작 화면: 강한 기기는 setChoiceEnabled를 부르지 않는다', async () => {
+  const { play } = setup({}, { title: true });
+  await flush();
+  assert.deepEqual(play.title.choiceEnabled, []);
+});
+
+test('선택기: 안 되는 모델을 고르면 이유만 보이고 불러오지 않는다', async () => {
+  const l = loader();
+  const { play } = setup({ probe: weakProbe, loadWebLLM: l.loadWebLLM });
+  await flush();
+  play.fire.pick(GEMMA);
+  await flush();
+  assert.equal(l.calls.length, 0);
+  assert.equal(play.picker.texts.at(-1), HEAVY);
+  assert.deepEqual(play.busy, []);
+});
+
+test('setBusy: 불러오기 시작에 켜고 끝나면 끈다', async () => {
+  const l = loader();
+  const { play } = setup({ loadWebLLM: l.loadWebLLM });
+  play.fire.pick(QWEN);
+  assert.deepEqual(play.busy, [[true, 'AI 스님 준비 중 · 잠시 화면이 느려질 수 있어요']]);
+  await flush();
+  assert.deepEqual(play.busy.at(-1), [false, undefined]);
+  assert.equal(play.busy.length, 2);
+});
+
+test('setBusy: 실패해도 끈다', async () => {
+  const loadWebLLM = async () => ({ supported: async () => true, load: async () => { throw new Error('oom'); } });
+  const { play } = setup({ loadWebLLM });
+  play.fire.pick(QWEN);
+  await flush();
+  assert.deepEqual(play.busy.map(b => b[0]), [true, false]);
+});
+
+test('Play에 setBusy가 없어도(옛 Play) 깨울 수 있다', async () => {
+  const l = loader();
+  const { play } = setup({ loadWebLLM: l.loadWebLLM });
+  delete play.setBusy;
+  play.fire.pick(QWEN);
+  await flush();
+  assert.equal(play.picker.hidden, true);
+});
+
+test('Gemma 실패: 가벼운 AI로 다시 버튼, 누르면 Qwen으로 재시도', async () => {
+  const calls = [];
+  const loadWebLLM = async ({ modelId }) => ({
+    supported: async () => true, ready: true, chat: async () => '',
+    load: async () => { calls.push(modelId); if (modelId === GEMMA) throw new Error('oom'); }
+  });
+  const { play } = setup({ loadWebLLM });
+  play.fire.pick(GEMMA);
+  await flush();
+  assert.equal(play.picker.texts.at(-1), '깨우기 실패 · 가벼운 AI로 다시');
+  play.picker.action();
+  await flush();
+  assert.deepEqual(calls, [GEMMA, QWEN]);
+  assert.equal(play.picker.hidden, true);
+});
+
+test('Qwen 실패: 대본 스님과 함께해요, 재시도 동작 없음', async () => {
+  const loadWebLLM = async () => ({ supported: async () => true, load: async () => { throw new Error('oom'); } });
+  const { play } = setup({ loadWebLLM });
+  play.fire.pick(QWEN);
+  await flush();
+  assert.equal(play.picker.texts.at(-1), '깨우기 실패 · 대본 스님과 함께해요');
+  assert.equal(play.picker.action, undefined);
 });

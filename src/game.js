@@ -4,6 +4,7 @@ import { createErrands } from './errands.js';
 import { createMockLLM } from './llm/mock.js';
 import { createRouter } from './llm/router.js';
 import { createBrain } from './brain.js';
+import { chooseModels, GEMMA_ID, QWEN_ID } from './llm/capability.js';
 import { applyAction } from './actions.js';
 import { buildJournal } from './journal.js';
 import {
@@ -18,14 +19,15 @@ const ERRAND_CHOICES = [{ label: '수락', id: 'accept' }, { label: '거절', id
 const GREET_COOLDOWN = 60;
 const MOCK_STATUS = '대본 스님이 답해요 · 우상단에서 AI 스님을 깨울 수 있어요';
 const MODELS = [
-  { id: 'gemma-4-E2B-it-q4f16_1-MLC', label: '똑똑하게 · 2.7GB' },
-  { id: 'Qwen3.5-2B-q4f16_1-MLC', label: '가볍게 · 1.1GB' }
+  { id: QWEN_ID, label: '가볍게 · 1.1GB' },
+  { id: GEMMA_ID, label: '똑똑하게 · 2.7GB' }
 ];
 const MODEL_KEY = 'sansa.model';
 const TITLE_CHOICES = [
-  { id: MODELS[0].id, label: '똑똑한 AI 스님', detail: '처음 한 번 2.7GB · 말을 잘 알아들어요', recommended: true },
-  { id: MODELS[1].id, label: '가벼운 AI 스님', detail: '처음 한 번 1.1GB · 빨리 받아요' }
+  { id: QWEN_ID, label: '가벼운 AI 스님', detail: '처음 한 번 1.1GB · 대부분의 노트북', recommended: true },
+  { id: GEMMA_ID, label: '똑똑한 AI 스님', detail: '처음 한 번 2.7GB · 고사양 PC용' }
 ];
+const BUSY_TEXT = 'AI 스님 준비 중 · 잠시 화면이 느려질 수 있어요';
 const TITLE_UNSUPPORTED = '이 브라우저에서는 AI를 쓸 수 없어요 · 대본 스님과 함께해요';
 const ANIMALS = ['dog', 'white', 'cat'];
 const PLACE_TARGETS = ['well', 'field', 'kitchen'];
@@ -37,7 +39,8 @@ const BUTTON = {
   pickerIdle: label => (label ? `AI 스님 깨우기 · ${label}` : 'AI 스님 깨우기'),
   unsupported: '이 기기에선 대본 스님',
   progress: p => `깨우는 중 ${Math.round(p * 100)}%`,
-  failed: '깨우기 실패 · 대본 스님'
+  failed: '깨우기 실패 · 대본 스님과 함께해요',
+  failedRetry: '깨우기 실패 · 가벼운 AI로 다시'
 };
 
 const distance = ([ax, ay], [bx, by]) => Math.abs(ax - bx) + Math.abs(ay - by);
@@ -352,6 +355,7 @@ export function createGame(play, deps = {}) {
     return true;
   }
   async function run(modelId) {
+    play.setBusy?.(true, BUSY_TEXT);
     try {
       const engine = await loadWebLLM({ modelId, onProgress: p => { if (!disposed) button.setText(BUTTON.progress(p)); } });
       if (disposed) return;
@@ -368,23 +372,28 @@ export function createGame(play, deps = {}) {
       button.hide();
       if (dialogue.isOpen()) dialogue.setStatus(status());
     } catch {
-      if (!disposed) button.setText(BUTTON.failed);
+      if (!disposed) {
+        // 무거운 모델이 실패했고 가벼운 모델이 가능하면 그쪽으로 다시 해 보게 한다.
+        if (modelId === GEMMA_ID && modelOk(QWEN_ID)) button.setText(BUTTON.failedRetry, guard(() => pickModel(QWEN_ID)));
+        else button.setText(BUTTON.failed);
+      }
     } finally {
+      play.setBusy?.(false);
       waking = false;
       pending = null;
     }
   }
 
-  // 모델을 내려받기 전에 이 브라우저가 WebGPU를 쓸 수 있는지만 확인한다.
+  // 모델을 내려받기 전에 기기 능력을 확인한다. 확인 전에는 막지 않는다.
+  let capability = null;
+  const modelOk = id => capability?.models.find(m => m.id === id)?.ok ?? true;
+  const modelReason = id => capability?.models.find(m => m.id === id)?.reason ?? '';
   async function probeSupport() {
-    let engine = null;
     try {
-      engine = await loadWebLLM({ modelId: MODELS[0].id });
-      return Boolean(await engine.supported());
+      const probe = deps.probe ?? (() => import('./llm/webllm.js').then(m => m.probe()));
+      return chooseModels(await probe());
     } catch {
-      return false;
-    } finally {
-      try { engine?.dispose?.(); } catch { /* 무시 */ }
+      return chooseModels({});
     }
   }
 
@@ -414,22 +423,34 @@ export function createGame(play, deps = {}) {
 
   const picked = readPick();
   function pickModel(id) {
-    if (MODELS.some(m => m.id === id) && wake(id)) savePick(id);
+    if (!MODELS.some(m => m.id === id)) return;
+    if (!modelOk(id)) { button.setText(modelReason(id)); return; }
+    if (wake(id)) savePick(id);
   }
   if (typeof play.modelPicker === 'function') {
     button = play.modelPicker(MODELS.map(m => ({ ...m })), guard(pickModel));
     button.setText(BUTTON.pickerIdle(picked?.label.split(' · ')[0]));
   } else { // 1단계 Play
     const model = picked ?? MODELS[0];
-    button = play.modelButton(guard(() => wake(model.id)));
+    button = play.modelButton(guard(() => {
+      if (modelOk(model.id)) wake(model.id);
+      else button.setText(modelReason(model.id));
+    }));
     button.setText(BUTTON.idle(model.label.split(' · ')[1]));
   }
-  if (typeof play.showTitle === 'function') {
+  const title = typeof play.showTitle === 'function'
     // id가 null이면 AI 없이 시작: 아무것도 불러오거나 저장하지 않는다.
-    const title = play.showTitle(TITLE_CHOICES.map(c => ({ ...c })), guard(id => { if (id !== null) pickModel(id); }));
-    title.setSelected(picked?.id ?? null);
-    probeSupport().then(ok => { if (!disposed) title.setAiAvailable(ok, ok ? undefined : TITLE_UNSUPPORTED); });
-  }
+    ? play.showTitle(TITLE_CHOICES.map(c => ({ ...c })), guard(id => { if (id !== null) pickModel(id); }))
+    : null;
+  title?.setSelected(picked?.id ?? null);
+  probeSupport().then(cap => {
+    if (disposed) return;
+    capability = cap;
+    if (!title) return;
+    if (!cap.recommended) { title.setAiAvailable(false, TITLE_UNSUPPORTED); return; }
+    title.setAiAvailable(true);
+    for (const m of cap.models) if (!m.ok) title.setChoiceEnabled?.(m.id, false, m.reason);
+  });
   if (typeof play.onJournal === 'function') play.onJournal(() => (disposed ? [] : buildJournal(memory)));
   syncTargets();
 
