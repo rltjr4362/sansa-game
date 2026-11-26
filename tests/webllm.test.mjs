@@ -44,7 +44,8 @@ function setup({ createEngine } = {}) {
     importWebLLM: async () => ({
       CreateWebWorkerMLCEngine: createEngine ?? (async () => engine)
     }),
-    createWorker: () => { const w = fakeWorker(); workers.push(w); return w; }
+    createWorker: () => { const w = fakeWorker(); workers.push(w); return w; },
+    settle: async () => {}
   });
   return { llm, engine, workers };
 }
@@ -159,4 +160,44 @@ test('dispose: 라이브러리 import 대기 중이면 워커를 만들지 않�
   await assert.rejects(p);
   assert.equal(workers.length, 0);
   assert.equal(llm.ready, false);
+});
+
+// ── 저사양 대응 ────────────────────────────────────────────
+
+test('load: chatOpts(4번째 인자)로 컨텍스트·prefill을 줄이고, 쉰 다음 max_tokens 2로 예열', async () => {
+  const log = [];
+  const engine = fakeEngine();
+  engine.chat.completions.create = req => { log.push(['warm', req.max_tokens]); return Promise.resolve({}); };
+  let args;
+  const llm = createWebLLM({
+    importWebLLM: async () => ({ CreateWebWorkerMLCEngine: async (...a) => { args = a; log.push('create'); return engine; } }),
+    createWorker: fakeWorker,
+    settle: async () => { log.push('settle'); }
+  });
+  await llm.load();
+  assert.deepEqual(args[3], { context_window_size: 2048, prefill_chunk_size: 256 });
+  assert.deepEqual(log, ['create', 'settle', ['warm', 2]]);
+});
+
+test('probe: WebGPU 없음·예외에도 던지지 않는다', async () => {
+  const { probe } = await import('../src/llm/webllm.js');
+  const nav = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const set = v => Object.defineProperty(globalThis, 'navigator', { value: v, configurable: true });
+  try {
+    set({});
+    assert.deepEqual(await probe(), { webgpu: false, f16: false, maxBuffer: 0, maxStorage: 0, weakGpu: false });
+    set({ gpu: { requestAdapter: async () => { throw new Error('x'); } } });
+    assert.equal((await probe()).webgpu, false);
+    const adapter = info => ({ features: new Set(['shader-f16']), limits: { maxBufferSize: 5, maxStorageBufferBindingSize: 7 }, info });
+    set({ userAgent: 'Mozilla Windows NT', gpu: { requestAdapter: async () => adapter({ vendor: 'intel', architecture: 'gen-12' }) } });
+    assert.deepEqual(await probe(), { webgpu: true, f16: true, maxBuffer: 5, maxStorage: 7, weakGpu: true });
+    set({ userAgent: 'Mozilla Macintosh', gpu: { requestAdapter: async () => adapter({ vendor: 'intel' }) } });
+    assert.equal((await probe()).weakGpu, false);
+    set({ userAgent: 'Windows', gpu: { requestAdapter: async () => adapter({ vendor: 'nvidia', description: 'RTX 4060' }) } });
+    assert.equal((await probe()).weakGpu, false);
+    set({ userAgent: 'Windows', gpu: { requestAdapter: async () => adapter(undefined) } });
+    assert.equal((await probe()).weakGpu, false);
+  } finally {
+    if (nav) Object.defineProperty(globalThis, 'navigator', nav); else delete globalThis.navigator;
+  }
 });
