@@ -5,7 +5,8 @@ const WEBLLM_URL = 'https://esm.run/@mlc-ai/web-llm@0.2.89';
 const abortError = () => new DOMException('Aborted', 'AbortError');
 
 // 모델 올리기 전후로 화면·GPU가 숨 쉴 틈을 준다: 두 프레임 + 0.3초.
-const CHAT_OPTS = { context_window_size: 2048, prefill_chunk_size: 256 };
+// KV 캐시를 줄여 그래픽 메모리를 아낀다. prefill 묶음 크기는 컴파일된 모델 메타데이터 값이라 0.2.89에서는 바꿀 수 없다.
+const CHAT_OPTS = { context_window_size: 2048 };
 const nextFrame = () => new Promise(r => (globalThis.requestAnimationFrame ? requestAnimationFrame(() => r()) : setTimeout(r, 16)));
 async function defaultSettle() {
   await nextFrame();

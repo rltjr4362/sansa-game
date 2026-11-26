@@ -175,7 +175,7 @@ test('load: chatOpts(4번째 인자)로 컨텍스트·prefill을 줄이고, 쉰 
     settle: async () => { log.push('settle'); }
   });
   await llm.load();
-  assert.deepEqual(args[3], { context_window_size: 2048, prefill_chunk_size: 256 });
+  assert.deepEqual(args[3], { context_window_size: 2048 });
   assert.deepEqual(log, ['create', 'settle', ['warm', 2]]);
 });
 
